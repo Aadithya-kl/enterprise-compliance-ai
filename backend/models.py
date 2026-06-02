@@ -1,13 +1,9 @@
-from sqlalchemy import Column
-from sqlalchemy import Integer
-from sqlalchemy import String
-from sqlalchemy import Text
-
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, Index
+from sqlalchemy.sql import func
 from database import Base
 
 
 class AuditReport(Base):
-
     __tablename__ = "audit_reports"
 
     id = Column(
@@ -17,29 +13,50 @@ class AuditReport(Base):
     )
 
     risk = Column(
-        String
+        String,
+        nullable=False,
+        index=True
     )
 
     compliance_score = Column(
-        Integer
+        Integer,
+        nullable=False,
+        index=True
     )
 
     violation_count = Column(
-        Integer
+        Integer,
+        nullable=False
     )
 
     issues = Column(
-        Text
+        Text,
+        nullable=False
     )
 
     recommendations = Column(
-        Text
+        Text,
+        nullable=False
     )
 
     audit_timestamp = Column(
-        String
+        String,
+        nullable=False,
+        index=True
     )
 
     auditor = Column(
-        String
+        String,
+        nullable=False,
+        default="Compliance AI Auditor"
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    __table_args__ = (
+        Index('idx_risk_timestamp', 'risk', 'audit_timestamp'),
     )
