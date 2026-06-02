@@ -43,6 +43,19 @@ Company Policy:
     return response["message"]["content"]
 
 
+def assess_risk(issues):
+
+    total = len(issues)
+
+    if total >= 5:
+        return "High"
+
+    elif total >= 2:
+        return "Medium"
+
+    return "Low"
+
+
 def generate_compliance_report(
     policy_documents,
     regulation_documents
@@ -94,9 +107,17 @@ Policy:
     content = response["message"]["content"]
 
     try:
-        return json.loads(content)
+
+        report = json.loads(content)
+
+        report["risk"] = assess_risk(
+            report["issues"]
+        )
+
+        return report
 
     except Exception:
+
         return {
             "raw_response": content
         }

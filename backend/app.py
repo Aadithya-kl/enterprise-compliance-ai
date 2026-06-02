@@ -9,7 +9,8 @@ from rag import (
 )
 from compliance import (
     analyze_compliance,
-    generate_compliance_report
+    generate_compliance_report,
+    assess_risk
 )
 import os
 
@@ -153,4 +154,28 @@ def compliance_report():
     )
 
     return report
-    
+
+@app.post("/risk-assessment")
+def risk_assessment():
+
+    policy_docs = get_documents_by_type(
+        "policy"
+    )
+
+    regulation_docs = get_documents_by_type(
+        "regulation"
+    )
+
+    report = generate_compliance_report(
+        policy_docs,
+        regulation_docs
+    )
+
+    risk = assess_risk(
+        report["issues"]
+    )
+
+    return {
+        "risk": risk,
+        "issue_count": len(report["issues"])
+    }
