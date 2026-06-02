@@ -9,12 +9,22 @@ from rag import (
 )
 from compliance import (
     analyze_compliance,
+    calculate_compliance_score,
     generate_compliance_report,
-    assess_risk
+    assess_risk,
+    calculate_compliance_score
 )
 import os
+from database import engine
+from models import Base
+from database import get_db
+from crud import save_audit_report
+from sqlalchemy.orm import Session
+from fastapi import Depends
 
 app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -128,7 +138,7 @@ def analyze():
     }
 
 @app.post("/compliance-report")
-def compliance_report():
+def compliance_report(db: Session = Depends(get_db)):
 
     policy_docs = get_documents_by_type(
         "policy"
@@ -152,7 +162,7 @@ def compliance_report():
         policy_docs,
         regulation_docs
     )
-
+    save_audit_report(db, report)
     return report
 
 @app.post("/risk-assessment")
@@ -175,7 +185,25 @@ def risk_assessment():
         report["issues"]
     )
 
+    score = calculate_compliance_score(
+    report["issues"]
+)
+
     return {
         "risk": risk,
-        "issue_count": len(report["issues"])
+        "issue_count": len(report["issues"]),
+        "compliance_score": score
     }
+
+from models import AuditReport
+
+@app.get("/audit-history")
+def audit_history(
+    db: Session = Depends(get_db)
+):
+
+    reports = db.query(
+        AuditReport
+    ).all()
+
+    return reports

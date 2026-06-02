@@ -1,6 +1,6 @@
 import ollama
 import json
-
+from datetime import datetime
 
 def analyze_compliance(
     policy_documents,
@@ -56,6 +56,18 @@ def assess_risk(issues):
     return "Low"
 
 
+def calculate_compliance_score(issues):
+
+    total_issues = len(issues)
+
+    score = 100 - (total_issues * 10)
+
+    if score < 0:
+        score = 0
+
+    return score
+
+
 def generate_compliance_report(
     policy_documents,
     regulation_documents
@@ -78,7 +90,6 @@ Required Format:
 
 {{
     "violation": true,
-    "risk": "High",
     "issues": [
         "Issue 1"
     ],
@@ -105,14 +116,36 @@ Policy:
     )
 
     content = response["message"]["content"]
+    print("\n\n===== OLLAMA RESPONSE =====")
+    print(content)
+    print("===========================\n\n")
 
     try:
 
         report = json.loads(content)
+        
 
         report["risk"] = assess_risk(
             report["issues"]
         )
+
+        report["compliance_score"] = (
+            calculate_compliance_score(
+                report["issues"]
+            )
+        )
+
+        report["violation_count"] = len(
+            report["issues"]
+        )
+
+        report["audit_timestamp"] = (
+            datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        )
+
+        report["auditor"] = ("Compliance AI Auditor")
 
         return report
 
