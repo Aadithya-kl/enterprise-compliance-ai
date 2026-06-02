@@ -53,14 +53,21 @@ def delete_document(filename):
         }
     )
 
-def store_chunks(chunks, filename):
+def store_chunks(
+    chunks,
+    filename,
+    document_type
+):
 
     delete_document(filename)
 
     collection.add(
         documents=chunks,
         metadatas=[
-            {"filename": filename}
+            {
+                "filename": filename,
+                "document_type": document_type
+            }
             for _ in chunks
         ],
         ids=[str(uuid4()) for _ in chunks]
@@ -83,6 +90,16 @@ def search_chunks(query):
     "documents": results["documents"][0],
     "metadata": results["metadatas"][0]
 }
+
+def get_documents_by_type(document_type):
+
+    results = collection.get(
+        where={
+            "document_type": document_type
+        }
+    )
+
+    return results["documents"]
 
 def generate_answer(question, chunks):
 
