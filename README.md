@@ -1,190 +1,272 @@
 # Enterprise Compliance & Audit Intelligence Platform
 
-A production-grade, AI-powered enterprise compliance and audit platform built with FastAPI, React, and Ollama.
+## Overview
+
+Enterprise Compliance & Audit Intelligence Platform is an AI-powered solution designed to automate compliance monitoring, regulatory gap analysis, risk assessment, and audit reporting.
+
+The platform enables organizations to upload internal policies and regulatory documents, perform intelligent compliance analysis, identify potential risks, generate structured audit reports, and gain actionable insights through an interactive analytics dashboard.
+
+Built using modern AI, Retrieval-Augmented Generation (RAG), workflow orchestration, and enterprise-grade web technologies, the platform provides a scalable foundation for compliance and governance operations.
 
 ---
 
-## Architecture Overview
+## Key Features
 
-```
-compliance-ai/
-├── backend/           FastAPI + SQLAlchemy + ChromaDB + Ollama
-│   └── app/
-│       ├── api/v1/    Versioned REST API endpoints
-│       ├── agents/    Multi-agent AI pipeline (LangGraph)
-│       ├── core/      Configuration, security, logging
-│       ├── crud/      Database CRUD layer
-│       ├── db/        Session management, migrations
-│       ├── mcp/       Model Context Protocol integrations
-│       ├── models/    SQLAlchemy ORM models
-│       ├── schemas/   Pydantic request/response schemas
-│       └── services/  Business logic layer
-└── frontend/          React 18 + TypeScript + Tailwind CSS
-    └── src/
-        ├── api/       Axios client modules
-        ├── pages/     Full-page route components
-        ├── components/Reusable UI components
-        ├── store/     Auth context
-        └── types/     TypeScript interfaces
+### Intelligent Document Analysis
+
+* Upload policy and regulatory documents
+* Automated document ingestion and indexing
+* Semantic search and contextual retrieval
+
+### Retrieval-Augmented Generation (RAG)
+
+* Context-aware question answering
+* Evidence-based responses from uploaded documents
+* Reduced hallucinations through retrieval grounding
+
+### AI-Powered Compliance Assessment
+
+* Automated policy vs regulation comparison
+* Compliance gap identification
+* Missing requirement detection
+* Recommendation generation
+
+### Risk Assessment Engine
+
+* Compliance risk categorization
+* Risk scoring and prioritization
+* Actionable mitigation recommendations
+
+### Audit Report Generation
+
+* Structured compliance reports
+* Audit history tracking
+* Report persistence and retrieval
+
+### Multi-Agent Workflow System
+
+* Compliance Analysis Agent
+* Risk Assessment Agent
+* Report Generation Agent
+* Workflow orchestration using LangGraph
+
+### Enterprise Dashboard
+
+* Compliance metrics
+* Risk analytics
+* Audit trends
+* Historical reporting insights
+
+### User Management & Access Control
+
+* Role-based authentication
+* JWT authorization
+* Administrative user management
+
+---
+
+## System Architecture
+
+```text
+Frontend (React + TypeScript)
+        |
+        v
+FastAPI Backend
+        |
+        +------------------+
+        |                  |
+        v                  v
+   PostgreSQL         ChromaDB
+   (Application)      (Vector Store)
+        |
+        v
+   AI Services
+        |
+        v
+      Ollama
 ```
 
 ---
 
-## Quick Start (Development)
-
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Ollama running locally with `llama3` model
-- Supabase PostgreSQL database
-
-### Backend
-
-```powershell
-cd backend
-
-# Create and activate virtual environment
-python -m venv venv
-.\venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-copy .env.example .env
-# Edit .env: set DATABASE_URL, SECRET_KEY
-
-# Run database migrations
-# Open Supabase SQL Editor and run: app/db/migrations/initial.sql
-
-# Start development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Or press **F5** in VS Code to launch with the debugger.
-
-API documentation available at: `http://localhost:8000/docs`
+## Technology Stack
 
 ### Frontend
 
-```powershell
+* React
+* TypeScript
+* Tailwind CSS
+* React Query
+* Axios
+* Recharts
+
+### Backend
+
+* FastAPI
+* SQLAlchemy
+* Pydantic
+* JWT Authentication
+* LangGraph
+
+### AI & Data
+
+* Ollama
+* ChromaDB
+* Retrieval-Augmented Generation (RAG)
+
+### Database
+
+* PostgreSQL (Supabase)
+
+---
+
+## Core Modules
+
+### Authentication Module
+
+Provides secure authentication and role-based authorization for platform users.
+
+### Document Management Module
+
+Handles document uploads, processing, indexing, and retrieval.
+
+### Compliance Intelligence Module
+
+Performs AI-driven compliance evaluation against regulatory requirements.
+
+### Risk Analytics Module
+
+Calculates compliance scores, risk levels, and mitigation priorities.
+
+### Audit Management Module
+
+Stores, retrieves, and manages audit reports and compliance assessments.
+
+### Multi-Agent Workflow Engine
+
+Coordinates specialized AI agents for compliance evaluation and reporting.
+
+---
+
+## Project Workflow
+
+### Step 1
+
+Upload organizational policies and regulatory documents.
+
+### Step 2
+
+Documents are processed, chunked, and indexed into the vector database.
+
+### Step 3
+
+Users perform compliance analysis or ask contextual questions.
+
+### Step 4
+
+The AI workflow evaluates compliance requirements and identifies gaps.
+
+### Step 5
+
+Risk assessment is generated based on detected issues.
+
+### Step 6
+
+A structured audit report is produced and stored.
+
+### Step 7
+
+Results are visualized through the analytics dashboard.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+* Python 3.11+
+* Node.js 18+
+* PostgreSQL Database
+* Ollama
+
+### Backend Setup
+
+```bash
+cd backend
+
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+pip install -r requirements.txt
+
+uvicorn app.main:app --reload
+```
+
+### Frontend Setup
+
+```bash
 cd frontend
 
-# Install dependencies
 npm install
 
-# Start development server
 npm run dev
 ```
 
-Application available at: `http://localhost:5173`
+### Access
 
----
+Frontend:
 
-## Default Credentials
-
-On first startup, a default admin account is created:
-
-| Field    | Value                 |
-|----------|-----------------------|
-| Email    | `admin@company.com`   |
-| Password | `Admin123!`           |
-
-**Change this password immediately** using the User Management page.
-
----
-
-## API Endpoints
-
-| Method | Path                                    | Description                    | Auth Required |
-|--------|-----------------------------------------|--------------------------------|---------------|
-| POST   | `/api/v1/auth/login`                    | Obtain JWT tokens              | No            |
-| POST   | `/api/v1/auth/register`                 | Create user (admin only)       | Admin         |
-| GET    | `/api/v1/auth/me`                       | Current user profile           | Yes           |
-| POST   | `/api/v1/documents/upload`              | Upload and ingest PDF          | Yes           |
-| POST   | `/api/v1/documents/ask`                 | RAG question answering         | Yes           |
-| POST   | `/api/v1/compliance/report`             | Generate compliance report     | Yes           |
-| GET    | `/api/v1/compliance/history`            | List audit reports             | Yes           |
-| GET    | `/api/v1/dashboard/stats`               | Aggregate statistics           | Yes           |
-| GET    | `/api/v1/dashboard/trend`               | Monthly audit trend            | Yes           |
-| GET    | `/api/v1/dashboard/risk-distribution`   | Risk breakdown                 | Yes           |
-| POST   | `/api/v1/workflow/run`                  | Full multi-agent pipeline      | Yes           |
-| POST   | `/api/v1/mcp/sync`                      | Sync MCP document sources      | Admin         |
-| GET    | `/api/v1/users`                         | List users                     | Admin         |
-
----
-
-## User Roles
-
-| Role                  | Access                                                |
-|-----------------------|-------------------------------------------------------|
-| `admin`               | Full access, user management, MCP sync, delete audits |
-| `auditor`             | Upload documents, generate reports, view all data     |
-| `compliance_officer`  | View reports and analytics, read-only                 |
-
----
-
-## Docker Deployment
-
-```bash
-# Build and start all services
-docker compose up --build -d
-
-# View logs
-docker compose logs -f
-
-# Stop all services
-docker compose down
+```text
+http://localhost:5173
 ```
 
-Services:
-- Backend: `http://localhost:8000`
-- Frontend: `http://localhost:80`
+Backend API:
 
----
-
-## MCP Integration Configuration
-
-Configure in `backend/.env`:
-
-```env
-# Local file system (no credentials needed)
-MCP_LOCAL_FILES_DIR=./mcp_documents
-
-# Google Drive (Service Account JSON)
-GOOGLE_DRIVE_CREDENTIALS_JSON=/path/to/service-account.json
-GOOGLE_DRIVE_FOLDER_ID=your_folder_id
-
-# Notion
-NOTION_API_TOKEN=secret_xxx
-NOTION_DATABASE_ID=your_database_id
+```text
+http://localhost:8000
 ```
 
-Trigger sync: `POST /api/v1/mcp/sync` (admin token required)
+API Documentation:
+
+```text
+http://localhost:8000/docs
+```
 
 ---
 
-## AI Workflow
+## Security Features
 
-The full compliance pipeline runs via `POST /api/v1/workflow/run`:
-
-1. **Document Retrieval** — fetches policy and regulation chunks from ChromaDB
-2. **Compliance Agent** — compares policy against regulation, identifies gaps
-3. **Risk Agent** — classifies issue severity, generates mitigation roadmap
-4. **Report Agent** — synthesises executive summary and structured findings
-5. **Persist** — saves the final report to Supabase
+* JWT-based Authentication
+* Role-Based Access Control (RBAC)
+* Password Hashing
+* Protected API Routes
+* Secure Session Management
 
 ---
 
-## Environment Variables Reference
+## Future Enhancements
 
-See `backend/.env.example` for the full list with documentation.
+* Regulatory Framework Templates
+* Automated Compliance Monitoring
+* Real-Time Alerts and Notifications
+* Advanced Risk Forecasting
+* Enterprise SSO Integration
+* Cloud Deployment Automation
+* Expanded MCP Integrations
 
-Key required variables:
+---
 
-| Variable         | Required | Description                           |
-|------------------|----------|---------------------------------------|
-| `DATABASE_URL`   | Yes      | PostgreSQL connection string          |
-| `SECRET_KEY`     | Yes      | JWT signing key (32+ random bytes)    |
-| `ADMIN_EMAIL`    | Yes      | Bootstrap admin email                 |
-| `ADMIN_PASSWORD` | Yes      | Bootstrap admin password              |
+## Project Objectives
+
+* Reduce manual compliance effort
+* Improve audit efficiency
+* Enable proactive risk management
+* Centralize compliance intelligence
+* Support evidence-based decision making
+
+---
+
+## License
+
+This project is developed for educational, research, and demonstration purposes.
