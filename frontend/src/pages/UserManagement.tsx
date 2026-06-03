@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { User } from '../types/auth'
 import { formatDate, formatRole } from '../utils/formatters'
+import { extractErrorMessage } from '../utils/errors'
+import { ErrorBoundary } from '../components/common/ErrorBoundary'
 
 interface UserListResponse {
   total: number
@@ -16,7 +18,7 @@ interface RegisterForm {
   role: string
 }
 
-export default function UserManagementPage() {
+function UserManagementContent() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<RegisterForm>({
@@ -29,7 +31,7 @@ export default function UserManagementPage() {
     role: 'auditor',
   })
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const res = await client.get<UserListResponse>('/users')
@@ -48,7 +50,8 @@ export default function UserManagementPage() {
       setFormError('')
     },
     onError: (err: any) => {
-      setFormError(err?.response?.data?.detail ?? 'Registration failed.')
+      console.error("User CRUD Error", err?.response?.data)
+      setFormError(extractErrorMessage(err))
     },
   })
 
@@ -68,7 +71,8 @@ export default function UserManagementPage() {
       setFormError('')
     },
     onError: (err: any) => {
-      setFormError(err?.response?.data?.detail ?? 'Update failed.')
+      console.error("User CRUD Error", err?.response?.data)
+      setFormError(extractErrorMessage(err))
     },
   })
 
@@ -154,10 +158,16 @@ export default function UserManagementPage() {
           <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
             {isLoading ? (
               <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading...</td></tr>
-            ) : data?.users.length === 0 ? (
+            ) : isError ? (
+              <tr>
+                <td colSpan={6} className="text-center py-8 text-red-500 dark:text-red-400">
+                  Failed to load users: {extractErrorMessage(error)}
+                </td>
+              </tr>
+            ) : !data || !Array.isArray(data.users) || data.users.length === 0 ? (
               <tr><td colSpan={6} className="text-center py-8 text-gray-400">No users found</td></tr>
             ) : (
-              data?.users.map((user) => (
+              data.users.map((user) => (
                 <tr key={user.id}>
                   {editingUserId === user.id ? (
                     <>
@@ -251,5 +261,13 @@ export default function UserManagementPage() {
         </table>
       </div>
     </div>
+  )
+}
+
+export default function UserManagementPage() {
+  return (
+    <ErrorBoundary>
+      <UserManagementContent />
+    </ErrorBoundary>
   )
 }

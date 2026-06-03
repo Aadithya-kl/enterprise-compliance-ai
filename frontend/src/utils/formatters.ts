@@ -32,7 +32,8 @@ export function formatDate(dateStr: string): string {
 }
 
 /** Format a role string for display */
-export function formatRole(role: string): string {
+export function formatRole(role?: string): string {
+  if (!role) return ''
   return role
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
