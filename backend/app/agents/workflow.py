@@ -12,17 +12,25 @@ Graph topology:
 
 State flows through the graph as a typed dict.
 Each node is a pure function that accepts and returns state.
+
+Execution is wrapped in a ThreadPoolExecutor with a hard deadline
+(WORKFLOW_TIMEOUT_SECONDS from config) to prevent indefinite hangs.
+If LangGraph fails or times out, the nodes execute sequentially as fallback.
 """
 
+import time
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Optional, TypedDict
 
 from app.agents.compliance_agent import ComplianceAgent
 from app.agents.report_agent import ReportAgent
 from app.agents.risk_agent import RiskAgent
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.services.rag_service import get_chunks_by_type
 
 logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # State schema
@@ -57,7 +65,7 @@ class WorkflowState(TypedDict, total=False):
 
 
 # ---------------------------------------------------------------------------
-# Node functions
+# Agent singletons
 # ---------------------------------------------------------------------------
 
 _compliance_agent = ComplianceAgent()
@@ -65,70 +73,106 @@ _risk_agent = RiskAgent()
 _report_agent = ReportAgent()
 
 
+# ---------------------------------------------------------------------------
+# Node functions — each logs entry/exit with elapsed time
+# ---------------------------------------------------------------------------
+
+
 def retrieve_documents(state: WorkflowState) -> WorkflowState:
     """Fetch policy and regulation chunks from ChromaDB."""
-    policy_type = state.get("policy_type", "policy")
-    regulation_type = state.get("regulation_type", "regulation")
+    t = time.monotonic()
+    logger.info("[retrieve_documents] ENTER")
+    try:
+        policy_type = state.get("policy_type", "policy")
+        regulation_type = state.get("regulation_type", "regulation")
 
-    policy_chunks = get_chunks_by_type(policy_type)
-    regulation_chunks = get_chunks_by_type(regulation_type)
+        policy_chunks = get_chunks_by_type(policy_type)
+        regulation_chunks = get_chunks_by_type(regulation_type)
 
-    logger.info(
-        f"[retrieve_documents] policy={len(policy_chunks)} chunks "
-        f"regulation={len(regulation_chunks)} chunks"
-    )
+        logger.info(
+            f"[retrieve_documents] EXIT in {time.monotonic()-t:.2f}s — "
+            f"policy={len(policy_chunks)} chunks regulation={len(regulation_chunks)} chunks"
+        )
 
-    if not policy_chunks:
-        return {**state, "error": f"No documents of type '{policy_type}' found."}
-    if not regulation_chunks:
-        return {**state, "error": f"No documents of type '{regulation_type}' found."}
+        if not policy_chunks:
+            return {**state, "error": f"No documents of type '{policy_type}' found in ChromaDB. Upload a PDF first."}
+        if not regulation_chunks:
+            return {**state, "error": f"No documents of type '{regulation_type}' found in ChromaDB. Upload a PDF first."}
 
-    return {**state, "policy_chunks": policy_chunks, "regulation_chunks": regulation_chunks}
+        return {**state, "policy_chunks": policy_chunks, "regulation_chunks": regulation_chunks}
+
+    except Exception as exc:
+        logger.error(f"[retrieve_documents] EXCEPTION: {exc}", exc_info=True)
+        return {**state, "error": f"retrieve_documents failed: {exc}"}
 
 
 def run_compliance_agent(state: WorkflowState) -> WorkflowState:
     """Execute the ComplianceAgent to produce a structured gap analysis."""
     if state.get("error"):
-        return state   # Propagate error without executing
+        logger.warning("[run_compliance_agent] SKIPPED — upstream error present")
+        return state
 
-    result = _compliance_agent.run(state)
+    t = time.monotonic()
+    logger.info("[run_compliance_agent] ENTER")
+    try:
+        result = _compliance_agent.run(state)
 
-    if "error" in result:
-        logger.error(f"[run_compliance_agent] {result['error']}")
-        return {**state, "error": result["error"]}
+        if "error" in result:
+            logger.error(f"[run_compliance_agent] AGENT ERROR: {result['error']}")
+            return {**state, "error": result["error"]}
 
-    logger.info("[run_compliance_agent] complete")
-    return {**state, **result}
+        logger.info(f"[run_compliance_agent] EXIT in {time.monotonic()-t:.2f}s")
+        return {**state, **result}
+
+    except Exception as exc:
+        logger.error(f"[run_compliance_agent] EXCEPTION: {exc}", exc_info=True)
+        return {**state, "error": f"run_compliance_agent failed: {exc}"}
 
 
 def run_risk_agent(state: WorkflowState) -> WorkflowState:
     """Execute the RiskAgent to classify issues and build mitigation roadmap."""
     if state.get("error"):
+        logger.warning("[run_risk_agent] SKIPPED — upstream error present")
         return state
 
-    result = _risk_agent.run(state)
+    t = time.monotonic()
+    logger.info("[run_risk_agent] ENTER")
+    try:
+        result = _risk_agent.run(state)
 
-    if "error" in result:
-        logger.error(f"[run_risk_agent] {result['error']}")
-        return {**state, "error": result["error"]}
+        if "error" in result:
+            logger.error(f"[run_risk_agent] AGENT ERROR: {result['error']}")
+            return {**state, "error": result["error"]}
 
-    logger.info("[run_risk_agent] complete")
-    return {**state, **result}
+        logger.info(f"[run_risk_agent] EXIT in {time.monotonic()-t:.2f}s")
+        return {**state, **result}
+
+    except Exception as exc:
+        logger.error(f"[run_risk_agent] EXCEPTION: {exc}", exc_info=True)
+        return {**state, "error": f"run_risk_agent failed: {exc}"}
 
 
 def run_report_agent(state: WorkflowState) -> WorkflowState:
     """Execute the ReportAgent to synthesise the final audit report."""
     if state.get("error"):
+        logger.warning("[run_report_agent] SKIPPED — upstream error present")
         return state
 
-    result = _report_agent.run(state)
+    t = time.monotonic()
+    logger.info("[run_report_agent] ENTER")
+    try:
+        result = _report_agent.run(state)
 
-    if "error" in result:
-        logger.error(f"[run_report_agent] {result['error']}")
-        return {**state, "error": result["error"]}
+        if "error" in result:
+            logger.error(f"[run_report_agent] AGENT ERROR: {result['error']}")
+            return {**state, "error": result["error"]}
 
-    logger.info("[run_report_agent] complete")
-    return {**state, **result}
+        logger.info(f"[run_report_agent] EXIT in {time.monotonic()-t:.2f}s")
+        return {**state, **result}
+
+    except Exception as exc:
+        logger.error(f"[run_report_agent] EXCEPTION: {exc}", exc_info=True)
+        return {**state, "error": f"run_report_agent failed: {exc}"}
 
 
 def persist_report(state: WorkflowState, db=None) -> WorkflowState:
@@ -137,41 +181,65 @@ def persist_report(state: WorkflowState, db=None) -> WorkflowState:
     db is injected at call time — not through LangGraph's state.
     """
     if state.get("error"):
+        logger.warning("[persist_report] SKIPPED — upstream error present")
         return state
 
     if not db:
         logger.warning("[persist_report] No db session provided — skipping persistence.")
         return state
 
-    final_report: dict = state.get("final_report", {})
-    if not final_report:
-        return {**state, "error": "No final_report in state to persist."}
+    t = time.monotonic()
+    logger.info("[persist_report] ENTER")
+    try:
+        final_report: dict = state.get("final_report", {})
+        if not final_report:
+            return {**state, "error": "No final_report in state to persist."}
 
-    from app.crud.audit_report import crud_audit_report
+        from app.crud.audit_report import crud_audit_report
 
-    # Map final_report fields to the audit_report schema
-    report_dict = {
-        "risk": final_report.get("risk_level", "Unknown"),
-        "compliance_score": final_report.get("compliance_score", 0),
-        "violation_count": final_report.get("total_violations", 0),
-        "issues": final_report.get("issues", []),
-        "recommendations": final_report.get("recommendations", []),
-        "audit_timestamp": final_report.get("audit_timestamp", ""),
-        "auditor": final_report.get("auditor", "Compliance AI Platform"),
-    }
+        report_dict = {
+            "risk": final_report.get("risk_level", "Unknown"),
+            "compliance_score": final_report.get("compliance_score", 0),
+            "violation_count": final_report.get("total_violations", 0),
+            "issues": final_report.get("issues", []),
+            "recommendations": final_report.get("recommendations", []),
+            "audit_timestamp": final_report.get("audit_timestamp", ""),
+            "auditor": final_report.get("auditor", "Compliance AI Platform"),
+        }
 
-    saved = crud_audit_report.create_from_dict(
-        db,
-        report=report_dict,
-        user_id=state.get("triggered_by_user_id"),
-    )
-    logger.info(f"[persist_report] Saved audit report id={saved.id}")
-    return {**state, "saved_report_id": saved.id}
+        saved = crud_audit_report.create_from_dict(
+            db,
+            report=report_dict,
+            user_id=state.get("triggered_by_user_id"),
+        )
+        logger.info(
+            f"[persist_report] EXIT in {time.monotonic()-t:.2f}s — saved id={saved.id}"
+        )
+        return {**state, "saved_report_id": saved.id}
+
+    except Exception as exc:
+        logger.error(f"[persist_report] EXCEPTION: {exc}", exc_info=True)
+        return {**state, "error": f"persist_report failed: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Sequential executor (used as fallback and by the timeout wrapper)
+# ---------------------------------------------------------------------------
+
+
+def _run_sequential(initial_state: WorkflowState) -> WorkflowState:
+    """Execute all workflow nodes in sequence without LangGraph."""
+    state = retrieve_documents(initial_state)
+    state = run_compliance_agent(state)
+    state = run_risk_agent(state)
+    state = run_report_agent(state)
+    return state
 
 
 # ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
+
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -216,6 +284,7 @@ except ImportError:
 # Public runner
 # ---------------------------------------------------------------------------
 
+
 def run_compliance_workflow(
     policy_type: str = "policy",
     regulation_type: str = "regulation",
@@ -224,39 +293,88 @@ def run_compliance_workflow(
 ) -> WorkflowState:
     """
     Entry point for the compliance workflow.
-    Runs the LangGraph graph if available, otherwise executes nodes sequentially.
-    The persist_report node is always called with the db session directly,
-    since LangGraph does not support injecting FastAPI dependencies into nodes.
+
+    Execution strategy:
+    1. If LangGraph is available, invoke the compiled graph inside a
+       ThreadPoolExecutor with a hard deadline of WORKFLOW_TIMEOUT_SECONDS.
+    2. If LangGraph times out or raises, fall back to sequential node execution
+       (also guarded by the same timeout).
+    3. persist_report is always called with the db session directly, since
+       LangGraph does not support injecting FastAPI dependencies into nodes.
+
+    This guarantees the function always returns — it will never hang indefinitely.
     """
+    timeout = settings.WORKFLOW_TIMEOUT_SECONDS
     initial_state: WorkflowState = {
         "policy_type": policy_type,
         "regulation_type": regulation_type,
         "triggered_by_user_id": user_id,
     }
 
+    t_total = time.monotonic()
+    logger.info(
+        f"[workflow] START — policy_type={policy_type} regulation_type={regulation_type} "
+        f"user_id={user_id} timeout={timeout}s"
+    )
+
+    state: WorkflowState = initial_state
+
     if _USE_LANGGRAPH:
         try:
             graph = build_compliance_workflow()
-            state = graph.invoke(initial_state)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future: Future = executor.submit(graph.invoke, initial_state)
+                try:
+                    state = future.result(timeout=timeout)
+                    logger.info(
+                        f"[workflow] LangGraph execution complete in "
+                        f"{time.monotonic()-t_total:.2f}s"
+                    )
+                except FutureTimeoutError:
+                    logger.error(
+                        f"[workflow] LangGraph timed out after {timeout}s. "
+                        f"Falling back to sequential execution."
+                    )
+                    future.cancel()
+                    state = _run_sequential(initial_state)
         except Exception as exc:
-            logger.error(f"LangGraph execution failed: {exc}", exc_info=True)
-            logger.info("Falling back to sequential node execution due to graph error...")
-            state = retrieve_documents(initial_state)
-            state = run_compliance_agent(state)
-            state = run_risk_agent(state)
-            state = run_report_agent(state)
+            logger.error(
+                f"[workflow] LangGraph execution raised: {exc}. "
+                f"Falling back to sequential execution.",
+                exc_info=True,
+            )
+            state = _run_sequential(initial_state)
     else:
-        state = retrieve_documents(initial_state)
-        state = run_compliance_agent(state)
-        state = run_risk_agent(state)
-        state = run_report_agent(state)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future: Future = executor.submit(_run_sequential, initial_state)
+            try:
+                state = future.result(timeout=timeout)
+            except FutureTimeoutError:
+                logger.error(
+                    f"[workflow] Sequential execution timed out after {timeout}s."
+                )
+                future.cancel()
+                state = {
+                    **initial_state,
+                    "error": f"Workflow timed out after {timeout}s. "
+                    f"The LLM may be overloaded or unavailable.",
+                }
 
     # Persist separately so we can pass the db session
-    if db is not None:
+    if db is not None and not state.get("error"):
         try:
             state = persist_report(state, db=db)
         except Exception as exc:
-            logger.error(f"Database persistence in workflow failed: {exc}", exc_info=True)
+            logger.error(f"[workflow] Database persistence failed: {exc}", exc_info=True)
             state = {**state, "error": f"Database persistence failed: {exc}"}
+
+    elapsed = time.monotonic() - t_total
+    if state.get("error"):
+        logger.error(f"[workflow] COMPLETE WITH ERROR in {elapsed:.2f}s: {state['error']}")
+    else:
+        logger.info(
+            f"[workflow] COMPLETE in {elapsed:.2f}s — "
+            f"saved_id={state.get('saved_report_id')}"
+        )
 
     return state

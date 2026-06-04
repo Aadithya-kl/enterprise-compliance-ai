@@ -1,5 +1,7 @@
 """Document upload and retrieval schemas."""
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -9,6 +11,12 @@ class UploadResponse(BaseModel):
     document_type: str
     characters: int
     chunks: int
+    # Google Drive fields.
+    # drive_upload_status is one of: "uploaded" | "duplicate" | "skipped" | "failed"
+    drive_upload_status: str = "skipped"
+    drive_file_id: Optional[str] = None
+    drive_file_name: Optional[str] = None
+    drive_web_view_link: Optional[str] = None
 
 
 class DocumentCountResponse(BaseModel):

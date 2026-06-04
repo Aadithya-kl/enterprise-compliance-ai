@@ -1,10 +1,48 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Python
 venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-.env
-
-uploads/
+# ChromaDB
 chroma_db/
+chroma/
 
+# Uploads
+uploads/
+
+# Logs
+*.log
+
+# Google Credentials
+*.json
+service-account.json
+google-credentials.json
+compliance-ai-*.json
+
+# VS Code
 .vscode/
+
+# Node
+node_modules/
+dist/
+build/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+coverage/
+htmlcov/
+
+# Secrets
+secrets/
+credentials/

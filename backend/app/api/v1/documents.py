@@ -1,11 +1,30 @@
 """
 Document management router.
-POST /api/v1/documents/upload         — upload and ingest PDF
-GET  /api/v1/documents/{type}/count   — count chunks by type
-POST /api/v1/documents/ask            — RAG question answering
+
+Endpoints:
+  POST /api/v1/documents/upload       — upload, ingest, and push to Google Drive
+  GET  /api/v1/documents/{type}/count — count ChromaDB chunks by type
+  POST /api/v1/documents/ask          — RAG question answering
+  POST /api/v1/documents/analyze      — narrative compliance gap analysis
+
+Upload pipeline (in order):
+  1. Validate: PDF extension + max file size.
+  2. Save:     Write bytes to local ./uploads/ directory.
+  3. Drive:    If configured, upload to Google Drive folder.
+               - Deduplication: if a file with the same name exists in the folder,
+                 reuse its metadata (drive_upload_status="duplicate").
+               - Non-blocking: Drive failure does not abort the request.
+               - drive_upload_status: "uploaded" | "duplicate" | "skipped" | "failed"
+  4. Extract:  Parse PDF text via pypdf.
+  5. Chunk:    Split text into overlapping windows.
+  6. Ingest:   Store chunks in ChromaDB with full provenance metadata:
+               - filename, document_type, source ("google_drive" or "local_upload")
+               - drive_file_id, drive_file_name, drive_web_view_link (when available)
+  7. Respond:  Return UploadResponse including all Drive metadata fields.
 """
 
 import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi import Query as QueryParam
@@ -21,6 +40,12 @@ from app.schemas.document import (
     QuestionResponse,
     UploadResponse,
 )
+from app.services.compliance_service import analyze_compliance
+from app.services.drive_upload_service import (
+    DriveUploadResult,
+    UploadToGoogleDriveError,
+    drive_upload_service,
+)
 from app.services.rag_service import (
     chunk_text,
     extract_text_from_pdf,
@@ -29,7 +54,6 @@ from app.services.rag_service import (
     retrieve_chunks,
     store_document_chunks,
 )
-from app.services.compliance_service import analyze_compliance
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 logger = get_logger(__name__)
@@ -46,21 +70,35 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 async def upload_document(
     document_type: str = QueryParam(
         ...,
-        description="Document category: 'policy' or 'regulation'",
+        description="Document category: 'policy', 'regulation', or 'general'",
         pattern="^[a-zA-Z_]{1,50}$",
     ),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Accept a PDF upload, extract text, chunk it, and store in ChromaDB.
-    The document_type parameter categorises the document for RAG retrieval.
+    Full document ingestion pipeline:
+
+    1. Save PDF locally under UPLOAD_DIR.
+    2. If Google Drive is configured, upload the file to the Drive folder.
+       Duplicate filenames are detected before upload — no duplicate files
+       are created in Drive. The response always reflects the true Drive state.
+    3. Extract text, chunk it, and persist to ChromaDB with full provenance
+       metadata (drive_file_id, drive_file_name, drive_web_view_link, source).
+    4. Return UploadResponse with Drive metadata for immediate frontend display.
+
+    Google Drive status values:
+      "uploaded"  — file pushed to Drive successfully.
+      "duplicate" — file with this name already exists in Drive; reused.
+      "skipped"   — Drive is not configured or disabled.
+      "failed"    — Drive upload attempted but failed; document saved locally.
     """
     logger.info(
-        f"Upload request: filename={file.filename} type={document_type} "
+        f"Upload request: filename={file.filename!r} type={document_type} "
         f"user_id={current_user.id}"
     )
 
+    # ---- Validation ----
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -74,27 +112,94 @@ async def upload_document(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
                 f"File exceeds maximum allowed size of "
-                f"{settings.MAX_UPLOAD_SIZE_MB} MB."
+                f"{settings.MAX_UPLOAD_SIZE_MB} MB. "
+                f"Received: {size_mb:.2f} MB."
             ),
         )
 
+    # ---- Step 1: Save locally ----
     file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
     with open(file_path, "wb") as fh:
         fh.write(content)
+    logger.info(f"Saved locally: {file_path} ({size_mb:.2f} MB)")
 
+    # ---- Step 2: Google Drive upload (non-blocking) ----
+    drive_result: Optional[DriveUploadResult] = None
+    drive_upload_status = "skipped"
+
+    if drive_upload_service.is_enabled():
+        try:
+            drive_result = drive_upload_service.upload_file(
+                local_path=file_path,
+                filename=file.filename,
+                document_type=document_type,
+            )
+            drive_upload_status = "duplicate" if drive_result.was_duplicate else "uploaded"
+            logger.info(
+                f"Drive result: {drive_upload_status} — "
+                f"file_id={drive_result.file_id} "
+                f"link={drive_result.web_view_link!r}"
+            )
+        except UploadToGoogleDriveError as exc:
+            drive_upload_status = "failed"
+            logger.warning(
+                f"Drive upload failed for '{file.filename}' — "
+                f"document saved locally only. Reason: {exc}"
+            )
+        except Exception as exc:
+            drive_upload_status = "failed"
+            logger.error(
+                f"Unexpected error during Drive upload for '{file.filename}': {exc}",
+                exc_info=True,
+            )
+    else:
+        logger.debug(
+            f"Google Drive not configured — skipping Drive upload for '{file.filename}'."
+        )
+
+    # ---- Step 3: Text extraction ----
     text = extract_text_from_pdf(file_path)
     if not text.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No readable text could be extracted from the uploaded PDF.",
+            detail=(
+                "No readable text could be extracted from the uploaded PDF. "
+                "The file may be scanned or image-only."
+            ),
         )
 
+    # ---- Step 4: Chunking ----
     chunks = chunk_text(text)
-    store_document_chunks(chunks, file.filename, document_type)
+
+    # ---- Step 5: ChromaDB ingestion with full provenance metadata ----
+    #
+    # Metadata stored per chunk:
+    #   filename        : original local filename (used as the dedup key)
+    #   document_type   : "policy" | "regulation" | "general"
+    #   source          : "google_drive" if pushed to Drive, else "local_upload"
+    #   drive_file_id   : Drive file ID (enables MCP incremental sync dedup)
+    #   drive_file_name : Filename as it appears in Drive
+    #   drive_web_view_link: Browser link to the file in Drive
+    #
+    extra_metadata: dict = {
+        "source": "google_drive" if drive_result else "local_upload",
+    }
+    if drive_result:
+        extra_metadata["drive_file_id"] = drive_result.file_id
+        extra_metadata["drive_file_name"] = drive_result.file_name
+        extra_metadata["drive_web_view_link"] = drive_result.web_view_link
+
+    store_document_chunks(
+        chunks,
+        filename=file.filename,
+        document_type=document_type,
+        extra_metadata=extra_metadata,
+    )
 
     logger.info(
-        f"Upload complete: {file.filename} | "
-        f"{len(chunks)} chunks | {len(text)} chars"
+        f"Upload complete: {file.filename!r} | "
+        f"{len(chunks)} chunks | {len(text)} chars | "
+        f"drive={drive_upload_status}"
     )
 
     return UploadResponse(
@@ -103,6 +208,10 @@ async def upload_document(
         document_type=document_type,
         characters=len(text),
         chunks=len(chunks),
+        drive_upload_status=drive_upload_status,
+        drive_file_id=drive_result.file_id if drive_result else None,
+        drive_file_name=drive_result.file_name if drive_result else None,
+        drive_web_view_link=drive_result.web_view_link if drive_result else None,
     )
 
 
@@ -133,11 +242,12 @@ def ask_question(
 ):
     """
     Retrieve the most relevant document chunks and generate a grounded answer
-    using the configured LLM.
+    using the configured LLM. Sources include all chunk metadata, enabling
+    the frontend to display Drive links when available.
     """
     logger.info(
         f"Q&A request: user_id={current_user.id} "
-        f"question={payload.question[:100]}"
+        f"question={payload.question[:100]!r}"
     )
 
     results = retrieve_chunks(payload.question)

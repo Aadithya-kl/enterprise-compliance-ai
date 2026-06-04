@@ -128,3 +128,130 @@ def sync_all_sources(_admin: User = Depends(get_admin)):
 
     logger.info(f"MCP sync complete: {total_ingested} total documents ingested")
     return SyncResponse(total_documents_ingested=total_ingested, results=results)
+
+
+# ---------------------------------------------------------------------------
+# Google Drive — dedicated sync endpoint
+# ---------------------------------------------------------------------------
+
+
+class GoogleDriveSyncResponse(BaseModel):
+    """Response returned by the Google Drive dedicated sync endpoint."""
+    documents_found: int
+    documents_processed: int
+    chunks_created: int
+    status: str
+
+
+class GoogleDriveVerifyResponse(BaseModel):
+    """Detailed diagnostic response from the Google Drive verify endpoint."""
+    connected: bool
+    credentials_file_exists: bool
+    service_account_loaded: bool
+    drive_client_initialized: bool
+    folder_accessible: bool
+    message: str
+
+
+_google_drive_source = GoogleDriveMCPSource()
+
+
+@router.post(
+    "/google-drive/sync",
+    response_model=GoogleDriveSyncResponse,
+    summary="Sync PDF documents from the configured Google Drive folder (admin only)",
+)
+def sync_google_drive(_admin: User = Depends(get_admin)):
+    """
+    Fetches all PDF files from the configured Google Drive folder,
+    extracts text, chunks it, and stores it in ChromaDB for RAG retrieval.
+
+    Only files not already present in ChromaDB are downloaded (incremental sync).
+    Sub-folders are traversed recursively.
+    Full pagination is used — handles folders with more than 100 files.
+    """
+    if not _google_drive_source.is_configured():
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Google Drive integration is not configured. "
+                "Set GOOGLE_DRIVE_ENABLED=true, GOOGLE_SERVICE_ACCOUNT_FILE, "
+                "and GOOGLE_DRIVE_FOLDER_ID in .env."
+            ),
+        )
+
+    try:
+        documents = _google_drive_source.fetch_documents()
+    except Exception as exc:
+        logger.error(f"Google Drive sync error: {exc}", exc_info=True)
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Google Drive sync failed: {exc}",
+        )
+
+    total_chunks = 0
+    processed = 0
+
+    for doc in documents:
+        try:
+            chunks = chunk_text(doc.content)
+            # Pass all Drive metadata (source, drive_file_id, drive_file_name,
+            # drive_web_view_link) into ChromaDB so MCP-synced chunks are
+            # indistinguishable from upload-pipeline chunks for RAG retrieval
+            # and incremental sync deduplication.
+            store_document_chunks(
+                chunks,
+                filename=doc.title,
+                document_type=doc.document_type,
+                extra_metadata=doc.metadata or {},
+            )
+            total_chunks += len(chunks)
+            processed += 1
+        except Exception as exc:
+            logger.error(
+                f"Google Drive ingest error [{doc.title}]: {exc}"
+            )
+
+    logger.info(
+        f"Google Drive sync complete: {processed}/{len(documents)} documents processed, "
+        f"{total_chunks} chunks created."
+    )
+
+    return GoogleDriveSyncResponse(
+        documents_found=len(documents),
+        documents_processed=processed,
+        chunks_created=total_chunks,
+        status="success",
+    )
+
+
+@router.get(
+    "/google-drive/verify",
+    response_model=GoogleDriveVerifyResponse,
+    summary="Verify Google Drive API connection and folder access (admin only)",
+)
+def verify_google_drive_connection(_admin: User = Depends(get_admin)):
+    """
+    Tests Google Drive connectivity step by step:
+    1. Confirms credential file exists on disk.
+    2. Loads and validates service account credentials.
+    3. Initializes the Drive API client.
+    4. Verifies folder access.
+
+    Returns per-step diagnostic flags so the operator can pinpoint the failure.
+    The most common failure is step 4 (folder_accessible=false), which means
+    the Google Drive folder has not been shared with the service account email.
+    """
+    # Create a fresh instance to avoid stale module-level singleton
+    source = GoogleDriveMCPSource()
+    result = source.verify_connection()
+    return GoogleDriveVerifyResponse(
+        connected=result["ok"],
+        credentials_file_exists=result.get("credentials_file_exists", False),
+        service_account_loaded=result.get("service_account_loaded", False),
+        drive_client_initialized=result.get("drive_client_initialized", False),
+        folder_accessible=result.get("folder_accessible", False),
+        message=result["message"],
+    )

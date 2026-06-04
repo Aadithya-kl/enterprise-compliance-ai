@@ -1,4 +1,4 @@
-import client from './client'
+import client, { workflowClient } from './client'
 import type {
   AuditReport,
   AuditReportListItem,
@@ -62,7 +62,7 @@ export const complianceApi = {
     policy_type = 'policy',
     regulation_type = 'regulation'
   ): Promise<WorkflowRunResponse> => {
-    const res = await client.post<WorkflowRunResponse>('/workflow/run', {
+    const res = await workflowClient.post<WorkflowRunResponse>('/workflow/run', {
       policy_type,
       regulation_type,
     })

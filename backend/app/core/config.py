@@ -106,8 +106,11 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     MCP_LOCAL_FILES_DIR: str = "./mcp_documents"
 
-    GOOGLE_DRIVE_CREDENTIALS_JSON: str = ""
+    GOOGLE_DRIVE_ENABLED: bool = False
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
     GOOGLE_DRIVE_FOLDER_ID: str = ""
+    # Legacy alias — kept for backwards compat
+    GOOGLE_DRIVE_CREDENTIALS_JSON: str = ""
 
     NOTION_API_TOKEN: str = ""
     NOTION_DATABASE_ID: str = ""
@@ -120,6 +123,13 @@ class Settings(BaseSettings):
         "ChangeMe123!",
         description="Default admin password — must be changed on first login"
     )
+
+    # -----------------------------------------------------------------------
+    # Workflow
+    # -----------------------------------------------------------------------
+    # Maximum seconds the full AI workflow is allowed to run before aborting.
+    # Covers all agent LLM calls in aggregate. Default 300s = 5 minutes.
+    WORKFLOW_TIMEOUT_SECONDS: int = 300
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

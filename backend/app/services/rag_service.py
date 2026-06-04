@@ -81,24 +81,37 @@ def store_document_chunks(
     chunks: list[str],
     filename: str,
     document_type: str,
+    extra_metadata: dict | None = None,
 ) -> None:
-    """Upsert document chunks into ChromaDB with metadata."""
+    """
+    Upsert document chunks into ChromaDB with metadata.
+
+    Args:
+        chunks:         List of text chunks to store.
+        filename:       Source filename — used as the metadata key for retrieval.
+        document_type:  Document category ('policy', 'regulation', 'general').
+        extra_metadata: Optional additional key/value pairs merged into every
+                        chunk's metadata dict. Use this to pass drive_file_id,
+                        web_view_link, or other provenance information.
+    """
     if not chunks:
         logger.warning(f"No chunks to store for {filename}")
         return
 
     _delete_document_chunks(filename)
 
+    base_meta = {"filename": filename, "document_type": document_type}
+    if extra_metadata:
+        base_meta.update(extra_metadata)
+
     _collection.add(
         documents=chunks,
-        metadatas=[
-            {"filename": filename, "document_type": document_type}
-            for _ in chunks
-        ],
+        metadatas=[dict(base_meta) for _ in chunks],
         ids=[str(uuid4()) for _ in chunks],
     )
     logger.info(
         f"Stored {len(chunks)} chunks | filename={filename} | type={document_type}"
+        + (f" | extra={list(extra_metadata.keys())}" if extra_metadata else "")
     )
 
 

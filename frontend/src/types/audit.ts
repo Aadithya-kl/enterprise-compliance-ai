@@ -62,6 +62,11 @@ export interface UploadResponse {
   document_type: string
   characters: number
   chunks: number
+  // Google Drive fields — present when drive_upload_status is "uploaded" or "duplicate"
+  drive_upload_status: 'uploaded' | 'duplicate' | 'skipped' | 'failed'
+  drive_file_id?: string | null
+  drive_file_name?: string | null
+  drive_web_view_link?: string | null
 }
 
 export interface QuestionResponse {
