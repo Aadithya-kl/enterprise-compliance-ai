@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     def validate_database_url(cls, v: str) -> str:
         if not v:
             raise ValueError("DATABASE_URL must be set in .env")
+        # Handle SQLAlchemy 2.0+ psycopg 3 driver format
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
 
     @field_validator("SECRET_KEY", mode="before")
