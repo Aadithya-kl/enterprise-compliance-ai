@@ -279,6 +279,9 @@ class GoogleDriveMCPSource(MCPSource):
                     exc_info=True,
                 )
 
+        self.last_total_found = len(pdf_files)
+        self.last_skipped_count = skipped
+
         logger.info(
             f"Google Drive MCP: sync complete — "
             f"{len(documents)} new documents loaded, "

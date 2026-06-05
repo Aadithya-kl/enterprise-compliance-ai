@@ -13,7 +13,7 @@ services:
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11435
       - OLLAMA_BASE_URL=http://host.docker.internal:11435
-      - GOOGLE_DRIVE_CREDENTIALS_JSON=/app/credentials/service-account.json
+      - GOOGLE_SERVICE_ACCOUNT_FILE=/app/credentials/service-account.json
       - DATABASE_URL=postgresql+psycopg://postgres:asdflkj4ce4g4@host.docker.internal:5433/postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"

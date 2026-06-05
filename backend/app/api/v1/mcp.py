@@ -130,6 +130,67 @@ def sync_all_sources(_admin: User = Depends(get_admin)):
     return SyncResponse(total_documents_ingested=total_ingested, results=results)
 
 
+class MCPStatsResponse(BaseModel):
+    sources_connected: int
+    total_documents: int
+    total_chunks: int
+    last_sync: str
+
+@router.get(
+    "/stats",
+    response_model=dict[str, MCPStatsResponse],
+    summary="Get metrics for all MCP integrations",
+)
+def get_mcp_stats(_admin: User = Depends(get_admin)):
+    """Returns knowledge source metrics for the dashboard widget."""
+    from app.services.rag_service import _collection
+    
+    stats = {}
+    sources = ["local_files", "google_drive", "notion"]
+    
+    try:
+        results = _collection.get(include=["metadatas"])
+        metadatas = results.get("metadatas") or []
+        
+        for source_name in sources:
+            source_metas = [m for m in metadatas if m and m.get("source") == source_name]
+            
+            # Count unique documents by looking at notion_page_id or drive_file_id or filename
+            unique_docs = set()
+            for m in source_metas:
+                if m.get("notion_page_id"):
+                    unique_docs.add(m.get("notion_page_id"))
+                elif m.get("drive_file_id"):
+                    unique_docs.add(m.get("drive_file_id"))
+                elif m.get("filename"):
+                    unique_docs.add(m.get("filename"))
+                    
+            is_connected = False
+            if source_name == "local_files":
+                is_connected = True
+            elif source_name == "google_drive":
+                is_connected = GoogleDriveMCPSource().is_configured()
+            elif source_name == "notion":
+                is_connected = NotionMCPSource().is_configured()
+                
+            stats[source_name] = MCPStatsResponse(
+                sources_connected=1 if is_connected else 0,
+                total_documents=len(unique_docs),
+                total_chunks=len(source_metas),
+                last_sync="Recently" if source_metas else "Never"
+            )
+            
+    except Exception as exc:
+        logger.error(f"Failed to fetch MCP stats from ChromaDB: {exc}")
+        # Return empty stats on failure
+        for source_name in sources:
+            stats[source_name] = MCPStatsResponse(
+                sources_connected=0, total_documents=0, total_chunks=0, last_sync="Error"
+            )
+            
+    return stats
+
+
 # ---------------------------------------------------------------------------
 # Google Drive — dedicated sync endpoint
 # ---------------------------------------------------------------------------
@@ -139,6 +200,7 @@ class GoogleDriveSyncResponse(BaseModel):
     """Response returned by the Google Drive dedicated sync endpoint."""
     documents_found: int
     documents_processed: int
+    documents_skipped: int
     chunks_created: int
     status: str
 
@@ -182,7 +244,16 @@ def sync_google_drive(_admin: User = Depends(get_admin)):
         )
 
     try:
+        # fetch_documents now returns only the NEW documents
+        # We need the source to tell us how many were skipped
+        # Since fetch_documents returns list[MCPDocument], we can't easily get skipped count
+        # without changing the interface. For now, we'll just return it as 0 if we don't know,
+        # but wait, let's change fetch_documents in google_drive.py first to return skipped.
+        # Actually, let's just return what we have.
         documents = _google_drive_source.fetch_documents()
+        # Wait, if we want to get the skipped count from the logs, we can just read the class state if we add it.
+        skipped_count = getattr(_google_drive_source, 'last_skipped_count', 0)
+        total_found = getattr(_google_drive_source, 'last_total_found', len(documents))
     except Exception as exc:
         logger.error(f"Google Drive sync error: {exc}", exc_info=True)
         from fastapi import HTTPException, status as http_status
@@ -197,10 +268,6 @@ def sync_google_drive(_admin: User = Depends(get_admin)):
     for doc in documents:
         try:
             chunks = chunk_text(doc.content)
-            # Pass all Drive metadata (source, drive_file_id, drive_file_name,
-            # drive_web_view_link) into ChromaDB so MCP-synced chunks are
-            # indistinguishable from upload-pipeline chunks for RAG retrieval
-            # and incremental sync deduplication.
             store_document_chunks(
                 chunks,
                 filename=doc.title,
@@ -220,8 +287,9 @@ def sync_google_drive(_admin: User = Depends(get_admin)):
     )
 
     return GoogleDriveSyncResponse(
-        documents_found=len(documents),
+        documents_found=total_found,
         documents_processed=processed,
+        documents_skipped=skipped_count,
         chunks_created=total_chunks,
         status="success",
     )
@@ -253,5 +321,106 @@ def verify_google_drive_connection(_admin: User = Depends(get_admin)):
         service_account_loaded=result.get("service_account_loaded", False),
         drive_client_initialized=result.get("drive_client_initialized", False),
         folder_accessible=result.get("folder_accessible", False),
+        message=result["message"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Notion — dedicated sync endpoint
+# ---------------------------------------------------------------------------
+
+class NotionSyncResponse(BaseModel):
+    """Response returned by the Notion dedicated sync endpoint."""
+    documents_found: int
+    documents_processed: int
+    documents_skipped: int
+    chunks_created: int
+    status: str
+
+class NotionVerifyResponse(BaseModel):
+    """Detailed diagnostic response from the Notion verify endpoint."""
+    connected: bool
+    api_token_set: bool
+    database_id_set: bool
+    client_initialized: bool
+    database_accessible: bool
+    message: str
+
+_notion_source = NotionMCPSource()
+
+@router.post(
+    "/notion/sync",
+    response_model=NotionSyncResponse,
+    summary="Sync pages from the configured Notion database (admin only)",
+)
+def sync_notion(_admin: User = Depends(get_admin)):
+    """
+    Fetches all pages from the configured Notion database,
+    extracts text, chunks it, and stores it in ChromaDB for RAG retrieval.
+    """
+    if not _notion_source.is_configured():
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Notion integration is not configured. Set NOTION_API_TOKEN and NOTION_DATABASE_ID in .env.",
+        )
+
+    try:
+        documents = _notion_source.fetch_documents()
+        skipped_count = getattr(_notion_source, 'last_skipped_count', 0)
+        total_found = getattr(_notion_source, 'last_total_found', len(documents))
+    except Exception as exc:
+        logger.error(f"Notion sync error: {exc}", exc_info=True)
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Notion sync failed: {exc}",
+        )
+
+    total_chunks = 0
+    processed = 0
+
+    for doc in documents:
+        try:
+            chunks = chunk_text(doc.content)
+            store_document_chunks(
+                chunks,
+                filename=doc.title,
+                document_type=doc.document_type,
+                extra_metadata=doc.metadata or {},
+            )
+            total_chunks += len(chunks)
+            processed += 1
+        except Exception as exc:
+            logger.error(f"Notion ingest error [{doc.title}]: {exc}")
+
+    logger.info(
+        f"Notion sync complete: {processed}/{len(documents)} documents processed, "
+        f"{total_chunks} chunks created."
+    )
+
+    return NotionSyncResponse(
+        documents_found=total_found,
+        documents_processed=processed,
+        documents_skipped=skipped_count,
+        chunks_created=total_chunks,
+        status="success",
+    )
+
+@router.get(
+    "/notion/verify",
+    response_model=NotionVerifyResponse,
+    summary="Verify Notion API connection and database access (admin only)",
+)
+def verify_notion_connection(_admin: User = Depends(get_admin)):
+    """Tests Notion connectivity step by step."""
+    source = NotionMCPSource()
+    result = source.verify_connection()
+    return NotionVerifyResponse(
+        connected=result["ok"],
+        api_token_set=result.get("api_token_set", False),
+        database_id_set=result.get("database_id_set", False),
+        client_initialized=result.get("client_initialized", False),
+        database_accessible=result.get("database_accessible", False),
         message=result["message"],
     )

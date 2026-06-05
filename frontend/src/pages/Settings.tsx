@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useAuth } from '../store/authStore'
 import { formatDate, formatRole } from '../utils/formatters'
+import { integrationsApi } from '../api/integrations'
 
 export default function SettingsPage() {
   const { user } = useAuth()
@@ -69,6 +71,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Integrations */}
+      <IntegrationsPanel />
+
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Password</h2>
         <p className="text-xs text-gray-500 mb-3">
@@ -76,5 +81,94 @@ export default function SettingsPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+function IntegrationsPanel() {
+  const [gdriveStatus, setGdriveStatus] = useState<any>(null)
+  const [notionStatus, setNotionStatus] = useState<any>(null)
+  const [syncingGdrive, setSyncingGdrive] = useState(false)
+  const [syncingNotion, setSyncingNotion] = useState(false)
+
+  const verifyGdrive = async () => {
+    try {
+      const res = await integrationsApi.verifyGoogleDrive()
+      setGdriveStatus(res)
+    } catch (e) {
+      setGdriveStatus({ connected: false, message: 'Verification failed' })
+    }
+  }
+
+  const verifyNotion = async () => {
+    try {
+      const res = await integrationsApi.verifyNotion()
+      setNotionStatus(res)
+    } catch (e) {
+      setNotionStatus({ connected: false, message: 'Verification failed' })
+    }
+  }
+
+  const syncGdrive = async () => {
+    setSyncingGdrive(true)
+    try {
+      await integrationsApi.syncGoogleDrive()
+      alert('Google Drive sync successful!')
+    } catch (e) {
+      alert('Google Drive sync failed.')
+    } finally {
+      setSyncingGdrive(false)
+    }
+  }
+
+  const syncNotion = async () => {
+    setSyncingNotion(true)
+    try {
+      await integrationsApi.syncNotion()
+      alert('Notion sync successful!')
+    } catch (e) {
+      alert('Notion sync failed.')
+    } finally {
+      setSyncingNotion(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Google Drive Integration</h2>
+          <span className={`text-xs px-2 py-1 rounded-full ${gdriveStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+            {gdriveStatus?.connected ? 'Connected' : 'Not Verified'}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          {gdriveStatus?.message || 'Sync compliance documents directly from Google Drive.'}
+        </p>
+        <div className="flex gap-3">
+          <button onClick={verifyGdrive} className="btn btn-secondary text-xs py-1.5">Verify Connection</button>
+          <button onClick={syncGdrive} disabled={syncingGdrive} className="btn btn-primary text-xs py-1.5">
+            {syncingGdrive ? 'Syncing...' : 'Sync Documents'}
+          </button>
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Notion Integration</h2>
+          <span className={`text-xs px-2 py-1 rounded-full ${notionStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+            {notionStatus?.connected ? 'Connected' : 'Not Verified'}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          {notionStatus?.message || 'Sync compliance policies directly from Notion databases.'}
+        </p>
+        <div className="flex gap-3">
+          <button onClick={verifyNotion} className="btn btn-secondary text-xs py-1.5">Verify Connection</button>
+          <button onClick={syncNotion} disabled={syncingNotion} className="btn btn-primary text-xs py-1.5">
+            {syncingNotion ? 'Syncing...' : 'Sync Documents'}
+          </button>
+        </div>
+      </div>
+    </>
   )
 }

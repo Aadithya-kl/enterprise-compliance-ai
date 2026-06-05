@@ -50,10 +50,18 @@ class NotionMCPSource(MCPSource):
             logger.error(f"Notion MCP: failed to list pages: {exc}")
             return []
 
+        already_ingested = self._get_already_ingested_ids()
         documents: list[MCPDocument] = []
+        skipped = 0
+
         for page in pages:
             try:
                 page_id = page["id"]
+                if page_id in already_ingested:
+                    logger.debug(f"Notion MCP: skipping page {page_id} (already ingested)")
+                    skipped += 1
+                    continue
+
                 title = self._extract_title(page)
                 text = self._extract_page_text(client, page_id)
 
@@ -68,6 +76,7 @@ class NotionMCPSource(MCPSource):
                         source=self.source_name,
                         document_type=self._infer_type(title),
                         metadata={
+                            "source": self.source_name,
                             "notion_page_id": page_id,
                             "title": title,
                         },
@@ -79,8 +88,90 @@ class NotionMCPSource(MCPSource):
                     f"Notion MCP: failed to process page: {exc}", exc_info=True
                 )
 
-        logger.info(f"Notion MCP: fetched {len(documents)} pages.")
+        self.last_total_found = len(pages)
+        self.last_skipped_count = skipped
+
+        logger.info(f"Notion MCP: sync complete — {len(documents)} new pages loaded, {skipped} skipped.")
         return documents
+
+    def _get_already_ingested_ids(self) -> set[str]:
+        """Query ChromaDB for notion_page_id to support incremental sync."""
+        try:
+            from app.services.rag_service import _collection
+            results = _collection.get(
+                where={"source": {"$eq": "notion"}},
+                include=["metadatas"],
+            )
+            ids: set[str] = set()
+            for meta in (results.get("metadatas") or []):
+                if meta and meta.get("notion_page_id"):
+                    ids.add(meta["notion_page_id"])
+            return ids
+        except Exception as exc:
+            logger.debug(f"Notion MCP: could not load ingested IDs: {exc}")
+            return set()
+
+    def verify_connection(self) -> dict:
+        """
+        Test Notion connectivity step by step.
+        Returns a detailed diagnostic dict with per-step status flags.
+        """
+        result = {
+            "ok": False,
+            "api_token_set": False,
+            "database_id_set": False,
+            "client_initialized": False,
+            "database_accessible": False,
+            "message": "",
+        }
+
+        if not settings.NOTION_API_TOKEN:
+            result["message"] = "NOTION_API_TOKEN is not set in .env."
+            return result
+        result["api_token_set"] = True
+
+        if not settings.NOTION_DATABASE_ID:
+            result["message"] = "NOTION_DATABASE_ID is not set in .env."
+            return result
+        result["database_id_set"] = True
+
+        try:
+            from notion_client import Client
+            client = Client(auth=settings.NOTION_API_TOKEN)
+            result["client_initialized"] = True
+        except ImportError:
+            result["message"] = "notion-client library is not installed."
+            return result
+        except Exception as exc:
+            result["message"] = f"Failed to initialize Notion client: {exc}"
+            return result
+
+        try:
+            db_info = client.databases.retrieve(database_id=settings.NOTION_DATABASE_ID)
+            result["database_accessible"] = True
+            result["ok"] = True
+            
+            # Extract title if possible
+            title = "Unknown Database"
+            if "title" in db_info:
+                title = "".join(part.get("plain_text", "") for part in db_info["title"])
+                
+            result["message"] = f"Connected successfully. Database: '{title}'"
+            logger.info(f"Notion MCP verify: database '{title}' accessible.")
+        except Exception as exc:
+            error_str = str(exc).lower()
+            if "404" in error_str or "not_found" in error_str:
+                result["message"] = (
+                    f"Database not found (HTTP 404). ID: {settings.NOTION_DATABASE_ID}. "
+                    "Ensure the integration is connected to this database."
+                )
+            elif "401" in error_str or "unauthorized" in error_str:
+                result["message"] = "Authentication failed. Check your NOTION_API_TOKEN."
+            else:
+                result["message"] = f"Database access failed: {exc}"
+            logger.error(f"Notion MCP verify: {result['message']}")
+
+        return result
 
     def _list_pages(self, client) -> list[dict]:
         """Query all pages from the configured Notion database."""

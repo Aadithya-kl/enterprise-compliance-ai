@@ -4,6 +4,7 @@ import { complianceApi } from '../api/compliance'
 import type { AuditReport } from '../types/audit'
 import { riskBadgeClass, scoreColor } from '../utils/formatters'
 import { useAuth } from '../store/authStore'
+import { integrationsApi } from '../api/integrations'
 
 export default function AuditHistoryPage() {
   const { user } = useAuth()
@@ -91,6 +92,10 @@ export default function AuditHistoryPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className={riskBadgeClass(selected.risk)}>{selected.risk}</span>
+                <div className="flex gap-1 ml-2">
+                  <button onClick={() => integrationsApi.exportReportPdf(selected.id)} className="btn-secondary text-xs px-2 py-1">Export PDF</button>
+                  <button onClick={() => integrationsApi.exportReportDocx(selected.id)} className="btn-secondary text-xs px-2 py-1">Export DOCX</button>
+                </div>
                 {user?.role === 'admin' && (
                   <button
                     onClick={() => deleteMutation.mutate(selected.id)}

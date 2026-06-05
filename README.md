@@ -1,272 +1,102 @@
 # Enterprise Compliance & Audit Intelligence Platform
 
-## Overview
+![Compliance AI](frontend/public/favicon.svg)
 
-Enterprise Compliance & Audit Intelligence Platform is an AI-powered solution designed to automate compliance monitoring, regulatory gap analysis, risk assessment, and audit reporting.
+## Project Overview
+The **Enterprise Compliance & Audit Intelligence Platform** is a state-of-the-art compliance management system that unifies disparate knowledge sources (Local Files, Google Drive, Notion) into a single, intelligent interface. Utilizing advanced Retrieval-Augmented Generation (RAG) and multi-agent LangGraph workflows, the platform autonomously evaluates organizational policies against regulatory requirements to produce accurate, traceable, and actionable audit reports.
 
-The platform enables organizations to upload internal policies and regulatory documents, perform intelligent compliance analysis, identify potential risks, generate structured audit reports, and gain actionable insights through an interactive analytics dashboard.
+## Problem Statement
+Modern enterprises store critical compliance and policy documentation across deeply fragmented silos—some in local servers, some in Google Drive, and others in modern wikis like Notion. When audits occur, compliance officers spend weeks manually retrieving, collating, and cross-referencing these documents against shifting regulations. This manual process is slow, error-prone, and scales poorly. 
 
-Built using modern AI, Retrieval-Augmented Generation (RAG), workflow orchestration, and enterprise-grade web technologies, the platform provides a scalable foundation for compliance and governance operations.
-
----
+This platform solves this by autonomously indexing policies across all major enterprise storage solutions and deploying specialized AI agents to instantly evaluate regulatory alignment.
 
 ## Key Features
+- **Multi-Source Knowledge Ingestion (MCP):** Connects to Local Storage, Google Drive, and Notion natively.
+- **Incremental Vector Sync:** Uses smart deduplication to only chunk and embed new or modified documents.
+- **RAG-Powered AI Workflow:** Employs a robust LangGraph pipeline containing a Compliance Agent, Risk Agent, and Report Synthesis Agent.
+- **Full Role-Based Access Control (RBAC):** Ensures only authenticated Administrators can manage users, while Auditors can run workflows.
+- **Live Health & Metrics Dashboard:** Monitors underlying infrastructure (PostgreSQL, ChromaDB, Ollama) and tracks synced document counts.
+- **One-Click Export:** Download deeply analyzed compliance reports as PDF or DOCX directly from the browser.
 
-### Intelligent Document Analysis
+## Architecture
 
-* Upload policy and regulatory documents
-* Automated document ingestion and indexing
-* Semantic search and contextual retrieval
-
-### Retrieval-Augmented Generation (RAG)
-
-* Context-aware question answering
-* Evidence-based responses from uploaded documents
-* Reduced hallucinations through retrieval grounding
-
-### AI-Powered Compliance Assessment
-
-* Automated policy vs regulation comparison
-* Compliance gap identification
-* Missing requirement detection
-* Recommendation generation
-
-### Risk Assessment Engine
-
-* Compliance risk categorization
-* Risk scoring and prioritization
-* Actionable mitigation recommendations
-
-### Audit Report Generation
-
-* Structured compliance reports
-* Audit history tracking
-* Report persistence and retrieval
-
-### Multi-Agent Workflow System
-
-* Compliance Analysis Agent
-* Risk Assessment Agent
-* Report Generation Agent
-* Workflow orchestration using LangGraph
-
-### Enterprise Dashboard
-
-* Compliance metrics
-* Risk analytics
-* Audit trends
-* Historical reporting insights
-
-### User Management & Access Control
-
-* Role-based authentication
-* JWT authorization
-* Administrative user management
-
----
-
-## System Architecture
-
-```text
-Frontend (React + TypeScript)
-        |
-        v
-FastAPI Backend
-        |
-        +------------------+
-        |                  |
-        v                  v
-   PostgreSQL         ChromaDB
-   (Application)      (Vector Store)
-        |
-        v
-   AI Services
-        |
-        v
-      Ollama
+### System Architecture
+```mermaid
+graph TD
+    UI[React Frontend / Vite] -->|REST API / JWT| FastAPI[FastAPI Backend]
+    FastAPI -->|PostgreSQL| DB[(Supabase DB)]
+    FastAPI -->|Vector DB| Chroma[(ChromaDB)]
+    FastAPI -->|Ollama| LLM[Llama 3 Local LLM]
+    FastAPI -->|ReportLab / Docx| Export[PDF/DOCX Generator]
 ```
 
----
+### Model Context Protocol (MCP) Architecture
+```mermaid
+graph LR
+    Sync[Aggregate Sync Endpoint] --> Local[Local Files]
+    Sync --> Drive[Google Drive API]
+    Sync --> Notion[Notion API]
+    Local --> Dedup[Incremental Deduplication]
+    Drive --> Dedup
+    Notion --> Dedup
+    Dedup --> Chunking[SentenceTransformer Chunking]
+    Chunking --> ChromaDB[(ChromaDB)]
+```
+
+### LangGraph RAG Workflow
+```mermaid
+graph TD
+    Start[User Request] --> Retrieve[RAG Context Retrieval]
+    Retrieve --> Compliance[Compliance Agent - Finds Violations]
+    Compliance --> Risk[Risk Agent - Assigns Risk Score]
+    Risk --> Report[Report Agent - Formats Markdown]
+    Report --> Save[Persist to PostgreSQL]
+```
 
 ## Technology Stack
+- **Frontend:** React 19, TypeScript, Vite, TailwindCSS, Recharts, React Query.
+- **Backend:** FastAPI, Python 3.11, SQLAlchemy, Pydantic, JWT.
+- **AI / Data:** LangGraph, Ollama (Llama 3), ChromaDB, SentenceTransformers.
+- **Integrations:** Google API Client, Notion API Client.
+- **Infrastructure:** Docker, Docker Compose, PostgreSQL (Supabase).
 
-### Frontend
+## Installation & Deployment
 
-* React
-* TypeScript
-* Tailwind CSS
-* React Query
-* Axios
-* Recharts
+### Local Development Setup
+1. **Clone the repository:**
+   ```bash
+   git clone <repo-url> compliance-ai
+   cd compliance-ai
+   ```
+2. **Configure Environment:**
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env with your Supabase DB URL, Notion Token, etc.
+   ```
+3. **Start the Database Proxy (if using Supabase IPv6 from an IPv4 host):**
+   ```bash
+   python backend/db_proxy.py
+   ```
+4. **Boot with Docker Compose:**
+   ```bash
+   docker-compose up --build -d
+   ```
+5. **Access the application:**
+   - Frontend UI: `http://localhost:5173`
+   - Backend API Docs: `http://localhost:8000/docs`
 
-### Backend
-
-* FastAPI
-* SQLAlchemy
-* Pydantic
-* JWT Authentication
-* LangGraph
-
-### AI & Data
-
-* Ollama
-* ChromaDB
-* Retrieval-Augmented Generation (RAG)
-
-### Database
-
-* PostgreSQL (Supabase)
-
----
-
-## Core Modules
-
-### Authentication Module
-
-Provides secure authentication and role-based authorization for platform users.
-
-### Document Management Module
-
-Handles document uploads, processing, indexing, and retrieval.
-
-### Compliance Intelligence Module
-
-Performs AI-driven compliance evaluation against regulatory requirements.
-
-### Risk Analytics Module
-
-Calculates compliance scores, risk levels, and mitigation priorities.
-
-### Audit Management Module
-
-Stores, retrieves, and manages audit reports and compliance assessments.
-
-### Multi-Agent Workflow Engine
-
-Coordinates specialized AI agents for compliance evaluation and reporting.
-
----
-
-## Project Workflow
-
-### Step 1
-
-Upload organizational policies and regulatory documents.
-
-### Step 2
-
-Documents are processed, chunked, and indexed into the vector database.
-
-### Step 3
-
-Users perform compliance analysis or ask contextual questions.
-
-### Step 4
-
-The AI workflow evaluates compliance requirements and identifies gaps.
-
-### Step 5
-
-Risk assessment is generated based on detected issues.
-
-### Step 6
-
-A structured audit report is produced and stored.
-
-### Step 7
-
-Results are visualized through the analytics dashboard.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-* Python 3.11+
-* Node.js 18+
-* PostgreSQL Database
-* Ollama
-
-### Backend Setup
-
-```bash
-cd backend
-
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-pip install -r requirements.txt
-
-uvicorn app.main:app --reload
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
-
-npm install
-
-npm run dev
-```
-
-### Access
-
-Frontend:
-
-```text
-http://localhost:5173
-```
-
-Backend API:
-
-```text
-http://localhost:8000
-```
-
-API Documentation:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-## Security Features
-
-* JWT-based Authentication
-* Role-Based Access Control (RBAC)
-* Password Hashing
-* Protected API Routes
-* Secure Session Management
-
----
+## API Documentation
+The complete OpenAPI specification is automatically generated and accessible at `/docs` when the backend is running. Key endpoints include:
+- `POST /api/v1/auth/login`: Issue JWT token.
+- `POST /api/v1/mcp/sync`: Trigger aggregate deduplicated sync across all sources.
+- `POST /api/v1/workflow/run`: Execute the LangGraph compliance audit.
+- `GET /api/v1/health`: Fetch detailed status of all microservices and external APIs.
+- `GET /api/v1/reports/{id}/export/pdf`: Download the final compliance report.
 
 ## Future Enhancements
+- **Shared Drive Support:** Expand the Google Drive MCP integration to scan Enterprise Shared Drives (`supportsAllDrives=True`).
+- **Slack/Teams Integration:** Automatically broadcast high-risk compliance failures to dedicated messaging channels.
+- **Real-time WebSockets:** Replace long-polling in the AI workflow with real-time WebSocket streaming for faster UI feedback.
 
-* Regulatory Framework Templates
-* Automated Compliance Monitoring
-* Real-Time Alerts and Notifications
-* Advanced Risk Forecasting
-* Enterprise SSO Integration
-* Cloud Deployment Automation
-* Expanded MCP Integrations
-
----
-
-## Project Objectives
-
-* Reduce manual compliance effort
-* Improve audit efficiency
-* Enable proactive risk management
-* Centralize compliance intelligence
-* Support evidence-based decision making
-
----
-
-## License
-
-This project is developed for educational, research, and demonstration purposes.
+## Team Contributions
+Built by the Advanced Agentic Coding Team.
