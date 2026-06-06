@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authApi } from '../api/auth'
 import { useAuth } from '../store/authStore'
+import { extractErrorMessage } from '../utils/errors'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -19,9 +20,8 @@ export default function LoginPage() {
       const tokens = await authApi.login({ email, password })
       await login(tokens)
       navigate('/')
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail ?? 'Authentication failed.'
-      setError(msg)
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err) ?? 'Authentication failed.')
     } finally {
       setLoading(false)
     }

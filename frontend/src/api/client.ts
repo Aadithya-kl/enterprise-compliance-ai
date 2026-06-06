@@ -10,7 +10,7 @@ export const API_V1 = `${BASE_URL}/api/v1`
 
 export const client = axios.create({
   baseURL: API_V1,
-  timeout: 60_000,
+  timeout: 300_000, // Increased to 5 minutes to allow local embedding/inference
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -35,18 +35,26 @@ const _injectToken = (config: InternalAxiosRequestConfig) => {
 client.interceptors.request.use(_injectToken)
 workflowClient.interceptors.request.use(_injectToken)
 
-// ---- Response interceptor: handle 401 globally ----
-const _handle401 = (error: AxiosError) => {
+// ---- Response interceptor: global error handling & 401 redirect ----
+const _handleError = (error: AxiosError) => {
   if (error.response?.status === 401) {
     localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    // Hard redirect to login — avoids stale React state issues
     window.location.href = '/login'
   }
+  
+  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+    console.error('API Timeout:', error.message)
+    // Optional: dispatch event so UI can show a toast
+    window.dispatchEvent(new CustomEvent('api-error', { detail: 'Request timed out. The server might be busy or offline.' }))
+  } else if (!error.response) {
+    console.error('Network Error:', error.message)
+    window.dispatchEvent(new CustomEvent('api-error', { detail: 'Network error. The server might be offline.' }))
+  }
+  
   return Promise.reject(error)
 }
 
-client.interceptors.response.use((response) => response, _handle401)
-workflowClient.interceptors.response.use((response) => response, _handle401)
+client.interceptors.response.use((r) => r, _handleError)
+workflowClient.interceptors.response.use((r) => r, _handleError)
 
 export default client

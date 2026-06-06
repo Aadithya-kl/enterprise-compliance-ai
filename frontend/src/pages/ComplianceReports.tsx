@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { complianceApi } from '../api/compliance'
 import type { ComplianceReportResponse, WorkflowRunResponse } from '../types/audit'
 import { riskBadgeClass, scoreColor } from '../utils/formatters'
+import { extractErrorMessage } from '../utils/errors'
 
 export default function ComplianceReportsPage() {
   const queryClient = useQueryClient()
@@ -78,7 +79,7 @@ export default function ComplianceReportsPage() {
       {/* Error */}
       {error && (
         <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
-          {(error as any)?.response?.data?.detail ?? String(error)}
+          {extractErrorMessage(error)}
         </div>
       )}
 

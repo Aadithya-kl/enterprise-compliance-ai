@@ -2,7 +2,9 @@
  * Centralised utility to extract a human-readable string message from
  * various API error formats, preventing React render crashes from objects in JSX.
  */
-export function extractErrorMessage(error: any): string {
+import { isAxiosError } from 'axios';
+
+export function extractErrorMessage(error: unknown): string {
   if (!error) return 'An unknown error occurred.'
 
   // 1. Plain string error
@@ -11,19 +13,20 @@ export function extractErrorMessage(error: any): string {
   }
 
   // 2. Axios response error with custom body details
-  if (error.response && error.response.data) {
+  if (isAxiosError(error) && error.response && error.response.data) {
     const data = error.response.data
 
     // 2.1. FastAPI/Pydantic validation detail array
     if (Array.isArray(data.detail)) {
       return data.detail
-        .map((err: any) => {
+        .map((err: Record<string, unknown>) => {
             if (err && typeof err === 'object') {
-              const field = err.loc ? err.loc[err.loc.length - 1] : ''
+              const locArray = Array.isArray(err.loc) ? err.loc : []
+              const field = locArray.length > 0 ? locArray[locArray.length - 1] : ''
               const fieldName = typeof field === 'string'
                 ? field.charAt(0).toUpperCase() + field.slice(1)
                 : String(field)
-              let msg = err.msg || 'Invalid value'
+              let msg = typeof err.msg === 'string' ? err.msg : 'Invalid value'
               if (msg.startsWith('Value error, ')) {
                 msg = msg.slice('Value error, '.length)
               }
@@ -57,8 +60,8 @@ export function extractErrorMessage(error: any): string {
   if (error instanceof Error) {
     return error.message
   }
-  if (error.message && typeof error.message === 'string') {
-    return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as Record<string, unknown>).message === 'string') {
+    return (error as Record<string, unknown>).message as string
   }
 
   // 4. Raw fallback object serialization

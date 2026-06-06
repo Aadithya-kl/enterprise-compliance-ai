@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { documentsApi } from '../api/documents'
+import { extractErrorMessage } from '../utils/errors'
 import type { UploadResponse } from '../types/audit'
 
 const DOCUMENT_TYPES = [
@@ -80,9 +81,8 @@ export default function UploadPage() {
     try {
       const res = await documentsApi.upload(file, docType)
       setResult(res)
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail
-      setError(typeof detail === 'string' ? detail : 'Upload failed.')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err) ?? 'Upload failed.')
     } finally {
       setLoading(false)
     }

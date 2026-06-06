@@ -45,7 +45,7 @@ export default function DashboardPage() {
 
   const totalConnected = Object.values(mcpStats ?? {}).reduce((acc, curr) => acc + curr.sources_connected, 0)
   const totalIndexed = Object.values(mcpStats ?? {}).reduce((acc, curr) => acc + curr.total_documents, 0)
-  const totalChunks = Object.values(mcpStats ?? {}).reduce((acc, curr) => acc + curr.total_chunks, 0)
+  // removed totalChunks
 
   return (
     <div className="space-y-6">
@@ -199,7 +199,8 @@ export default function DashboardPage() {
                 </Pie>
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 6 }}
-                  formatter={((value: number, name: string) => `${value} (${name})`) as any}
+                  // @ts-expect-error recharts formatter types are extremely complex
+                  formatter={(value: number, name: string) => `${value} (${name})`}
                 />
                 <Legend
                   iconType="circle"
@@ -210,7 +211,7 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+
 
       {/* Audit volume bar chart */}
       <div className="card p-5">

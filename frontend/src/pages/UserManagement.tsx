@@ -49,8 +49,8 @@ function UserManagementContent() {
       setForm({ email: '', full_name: '', password: '', role: 'auditor' })
       setFormError('')
     },
-    onError: (err: any) => {
-      console.error("User CRUD Error", err?.response?.data)
+    onError: (err: unknown) => {
+      console.error("User CRUD Error", err)
       setFormError(extractErrorMessage(err))
     },
   })
@@ -70,8 +70,8 @@ function UserManagementContent() {
       setEditingUserId(null)
       setFormError('')
     },
-    onError: (err: any) => {
-      console.error("User CRUD Error", err?.response?.data)
+    onError: (err: unknown) => {
+      console.error("User CRUD Error", err)
       setFormError(extractErrorMessage(err))
     },
   })

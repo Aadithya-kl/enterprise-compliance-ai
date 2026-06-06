@@ -24,7 +24,8 @@ def health_check(db: Session = Depends(get_db)):
 
     # 1. Database
     try:
-        db.execute("SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         health["database"] = "healthy"
     except Exception as exc:
         logger.error(f"Health Check - DB Error: {exc}")
@@ -41,11 +42,11 @@ def health_check(db: Session = Depends(get_db)):
     try:
         import requests
         # Use host.docker.internal if running in Docker to hit the Windows host proxy
-        # but realistically just test the configured endpoint.
-        # Hardcoding the test to localhost:11434 proxy
-        resp = requests.get("http://host.docker.internal:11435/api/tags", timeout=2)
+        resp = requests.get("http://host.docker.internal:11435/", timeout=2)
         if resp.status_code == 200:
             health["ollama"] = "healthy"
+        else:
+            logger.error(f"Health Check - Ollama Error: Non-200 status code {resp.status_code}")
     except Exception as exc:
         logger.error(f"Health Check - Ollama Error: {exc}")
 

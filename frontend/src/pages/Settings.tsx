@@ -85,8 +85,8 @@ export default function SettingsPage() {
 }
 
 function IntegrationsPanel() {
-  const [gdriveStatus, setGdriveStatus] = useState<any>(null)
-  const [notionStatus, setNotionStatus] = useState<any>(null)
+  const [gdriveStatus, setGdriveStatus] = useState<{ connected: boolean, message?: string } | null>(null)
+  const [notionStatus, setNotionStatus] = useState<{ connected: boolean, message?: string } | null>(null)
   const [syncingGdrive, setSyncingGdrive] = useState(false)
   const [syncingNotion, setSyncingNotion] = useState(false)
 
@@ -94,7 +94,7 @@ function IntegrationsPanel() {
     try {
       const res = await integrationsApi.verifyGoogleDrive()
       setGdriveStatus(res)
-    } catch (e) {
+    } catch {
       setGdriveStatus({ connected: false, message: 'Verification failed' })
     }
   }
@@ -103,7 +103,7 @@ function IntegrationsPanel() {
     try {
       const res = await integrationsApi.verifyNotion()
       setNotionStatus(res)
-    } catch (e) {
+    } catch {
       setNotionStatus({ connected: false, message: 'Verification failed' })
     }
   }
@@ -113,7 +113,7 @@ function IntegrationsPanel() {
     try {
       await integrationsApi.syncGoogleDrive()
       alert('Google Drive sync successful!')
-    } catch (e) {
+    } catch {
       alert('Google Drive sync failed.')
     } finally {
       setSyncingGdrive(false)
@@ -125,7 +125,7 @@ function IntegrationsPanel() {
     try {
       await integrationsApi.syncNotion()
       alert('Notion sync successful!')
-    } catch (e) {
+    } catch {
       alert('Notion sync failed.')
     } finally {
       setSyncingNotion(false)

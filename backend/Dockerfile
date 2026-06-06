@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl \
+    gcc libpq-dev curl libfreetype6-dev libjpeg-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps

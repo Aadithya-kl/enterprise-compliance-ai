@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { documentsApi } from '../api/documents'
 import type { QuestionResponse } from '../types/audit'
-
+import { extractErrorMessage } from '../utils/errors'
 export default function AskQuestionPage() {
   const [question, setQuestion] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,8 +17,8 @@ export default function AskQuestionPage() {
     try {
       const res = await documentsApi.ask(question.trim())
       setResult(res)
-    } catch (err: any) {
-      setError(err?.response?.data?.detail ?? 'Failed to get answer.')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err) ?? 'Failed to get answer.')
     } finally {
       setLoading(false)
     }
@@ -100,7 +100,7 @@ export default function AskQuestionPage() {
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Sources</p>
               <div className="flex flex-wrap gap-2">
-                {result.sources.map((s, i) => (
+                {result.sources.map((s: Record<string, string>, i: number) => (
                   <span key={i} className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">
                     {s.filename ?? s.document_type ?? 'Document'}
                   </span>

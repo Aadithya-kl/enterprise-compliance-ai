@@ -87,7 +87,8 @@ export default function RiskAnalyticsPage() {
                 </Pie>
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 6 }}
-                  formatter={((v: number) => String(v) + ' audits') as any}
+                  // @ts-expect-error recharts formatter types are extremely complex
+                  formatter={(v: number) => String(v) + ' audits'}
                 />
                 <Legend formatter={(v) => <span style={{ color: '#9ca3af', fontSize: 11 }}>{v}</span>} />
               </PieChart>
@@ -105,7 +106,8 @@ export default function RiskAnalyticsPage() {
               <Radar name="Health Score" dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 6 }}
-                formatter={((v: number) => Math.round(v) + '%') as any}
+                // @ts-expect-error recharts formatter types are extremely complex
+                formatter={(v: number) => Math.round(v) + '%'}
               />
             </RadarChart>
           </ResponsiveContainer>

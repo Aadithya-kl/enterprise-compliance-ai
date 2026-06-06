@@ -19,7 +19,7 @@ export interface HealthResponse {
 export interface VerifyResponse {
   connected: boolean
   message: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export interface SyncResponse {

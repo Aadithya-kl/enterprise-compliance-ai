@@ -29,14 +29,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(
     () => localStorage.getItem('access_token')
   )
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState<boolean>(
+    () => Boolean(localStorage.getItem('access_token'))
+  )
 
   const isAuthenticated = Boolean(token && user)
 
   // Load user from stored token on mount
   useEffect(() => {
-    if (token) {
-      setIsLoading(true)
+    if (token && !user) {
       authApi
         .me()
         .then((me) => {
@@ -50,10 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(null)
           setIsLoading(false)
         })
-    } else {
+    } else if (!token) {
       setIsLoading(false)
     }
-  }, [token])
+  }, [token, user])
 
   const login = useCallback(async (tokens: TokenResponse) => {
     setIsLoading(true)
