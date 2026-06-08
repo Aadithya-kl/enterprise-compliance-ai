@@ -365,8 +365,15 @@ class GoogleDriveMCPSource(MCPSource):
             subfolders = response.get("files", [])
 
             for subfolder in subfolders:
+                name = subfolder.get("name", "")
+                if name.lower() in {'venv', 'node_modules', '.git', '__pycache__', 'dist', 'build', '.vscode', '.idea', 'env'}:
+                    logger.warning(
+                        f"Google Drive MCP: Ignoring dependency/system folder '{name}'"
+                    )
+                    continue
+
                 logger.info(
-                    f"Google Drive MCP: traversing sub-folder '{subfolder['name']}' (id={subfolder['id']})"
+                    f"Google Drive MCP: traversing sub-folder '{name}' (id={subfolder['id']})"
                 )
                 pdf_files.extend(
                     self._list_all_pdf_files(service, subfolder["id"], visited_folders=visited_folders)
