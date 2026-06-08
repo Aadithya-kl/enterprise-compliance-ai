@@ -15,28 +15,38 @@ logger = get_logger(__name__)
 # Engine
 # ---------------------------------------------------------------------------
 
-_connect_args: dict = {
-    "sslmode": "require",
-    "connect_timeout": settings.DB_CONNECT_TIMEOUT,
-}
+_connect_args: dict = {}
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_recycle=settings.DB_POOL_RECYCLE,
-    pool_pre_ping=settings.DB_POOL_PRE_PING,
-    connect_args=_connect_args,
-    echo=settings.DEBUG,  # Log SQL only in DEBUG mode
-)
+if settings.DATABASE_URL.startswith("sqlite"):
+    _connect_args = {"check_same_thread": False}
+    engine = create_engine(
+        settings.DATABASE_URL,
+        connect_args=_connect_args,
+        echo=settings.DEBUG,  # Log SQL only in DEBUG mode
+    )
+else:
+    _connect_args = {
+        "sslmode": "require",
+        "connect_timeout": settings.DB_CONNECT_TIMEOUT,
+    }
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_recycle=settings.DB_POOL_RECYCLE,
+        pool_pre_ping=settings.DB_POOL_PRE_PING,
+        connect_args=_connect_args,
+        echo=settings.DEBUG,  # Log SQL only in DEBUG mode
+    )
 
 
 @event.listens_for(engine, "connect")
 def _set_search_path(dbapi_connection, _connection_record) -> None:
-    """Ensure the public schema is always in the search path."""
-    cursor = dbapi_connection.cursor()
-    cursor.execute("SET search_path TO public")
-    cursor.close()
+    """Ensure the public schema is always in the search path (PostgreSQL only)."""
+    if not settings.DATABASE_URL.startswith("sqlite"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET search_path TO public")
+        cursor.close()
 
 
 # ---------------------------------------------------------------------------

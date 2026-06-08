@@ -96,19 +96,34 @@ class CRUDAuditReport(CRUDBase[AuditReport]):
         """
         from sqlalchemy import extract, text
 
-        rows = db.execute(
-            text("""
-                SELECT
-                    TO_CHAR(created_at, 'YYYY-MM') AS month,
-                    COUNT(*)::int                  AS audit_count,
-                    ROUND(AVG(compliance_score), 2)::float AS average_score
-                FROM audit_reports
-                WHERE created_at >= NOW() - INTERVAL ':months months'
-                GROUP BY month
-                ORDER BY month ASC
-            """),
-            {"months": months},
-        ).fetchall()
+        if "sqlite" in db.bind.url.drivername:
+            rows = db.execute(
+                text("""
+                    SELECT
+                        strftime('%Y-%m', created_at) AS month,
+                        COUNT(*)                      AS audit_count,
+                        ROUND(AVG(compliance_score), 2) AS average_score
+                    FROM audit_reports
+                    WHERE created_at >= datetime('now', '-' || :months || ' month')
+                    GROUP BY month
+                    ORDER BY month ASC
+                """),
+                {"months": months},
+            ).fetchall()
+        else:
+            rows = db.execute(
+                text("""
+                    SELECT
+                        TO_CHAR(created_at, 'YYYY-MM') AS month,
+                        COUNT(*)::int                  AS audit_count,
+                        ROUND(AVG(compliance_score), 2)::float AS average_score
+                    FROM audit_reports
+                    WHERE created_at >= NOW() - INTERVAL ':months months'
+                    GROUP BY month
+                    ORDER BY month ASC
+                """),
+                {"months": months},
+            ).fetchall()
 
         return [
             {

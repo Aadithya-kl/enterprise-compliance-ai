@@ -105,16 +105,22 @@ def on_startup():
 
 def _auto_migrate_schema():
     """Ensure missing columns like created_by_user_id are automatically added."""
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'audit_reports' AND column_name = 'created_by_user_id'
-            """)).fetchone()
+            if "sqlite" in engine.url.drivername:
+                inspector = inspect(engine)
+                columns = [c["name"] for c in inspector.get_columns("audit_reports")]
+                has_column = "created_by_user_id" in columns
+            else:
+                result = conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'audit_reports' AND column_name = 'created_by_user_id'
+                """)).fetchone()
+                has_column = result is not None
             
-            if not result:
+            if not has_column:
                 logger.info("Column created_by_user_id is missing from audit_reports. Adding column...")
                 conn.execute(text("""
                     ALTER TABLE audit_reports 

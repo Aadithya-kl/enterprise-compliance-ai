@@ -26,20 +26,113 @@ _collection = _client.get_or_create_collection(
 
 
 # ---------------------------------------------------------------------------
-# Text extraction
+# Text extraction & Table Parsing
 # ---------------------------------------------------------------------------
 
+def table_to_markdown(table: list[list[str | None]]) -> str:
+    """Convert a 2D list representing a table into a Markdown table string."""
+    if not table:
+        return ""
+    # Filter out completely empty rows
+    table = [row for row in table if any(cell is not None and str(cell).strip() for cell in row)]
+    if not table:
+        return ""
+    
+    # Pad columns to match the maximum row length
+    max_cols = max(len(row) for row in table)
+    
+    markdown = []
+    for i, row in enumerate(table):
+        # Normalize cell values and escape pipe characters
+        cells = [str(cell).replace("\n", " ").replace("|", "\\|").strip() if cell is not None else "" for cell in row]
+        # Pad row cells to max_cols
+        cells += [""] * (max_cols - len(cells))
+        
+        markdown.append("| " + " | ".join(cells) + " |")
+        if i == 0:
+            # Header separator
+            markdown.append("| " + " | ".join(["---"] * max_cols) + " |")
+            
+    return "\n".join(markdown)
+
+
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extract all readable text from a PDF file using pypdf."""
-    reader = PdfReader(pdf_path)
+    """
+    Extract text and tables (formatted as Markdown) from a PDF file using pdfplumber.
+    Falls back to pytesseract OCR if page text is minimal (e.g. scanned image pages).
+    """
     pages_text = []
-    for page in reader.pages:
-        text = page.extract_text()
-        if text:
-            pages_text.append(text)
-    result = "\n".join(pages_text)
-    logger.debug(f"Extracted {len(result)} characters from {pdf_path}")
-    return result
+    
+    try:
+        import pdfplumber
+        import pypdfium2 as pdfium
+        import pytesseract
+        
+        logger.info(f"Extracting text & tables from {pdf_path} using pdfplumber...")
+        with pdfplumber.open(pdf_path) as pdf:
+            pdfium_doc = None
+            
+            for page_idx, page in enumerate(pdf.pages):
+                # 1. Extract plain text
+                page_content = page.extract_text() or ""
+                
+                # 2. Extract tables and convert them to Markdown
+                try:
+                    tables = page.extract_tables()
+                    formatted_tables = []
+                    for table in tables:
+                        md_table = table_to_markdown(table)
+                        if md_table:
+                            formatted_tables.append(md_table)
+                    
+                    if formatted_tables:
+                        page_content += "\n\n### Tables Extracted (Page {}):\n".format(page_idx + 1) + "\n\n".join(formatted_tables)
+                except Exception as table_exc:
+                    logger.warning(f"Table extraction failed on page {page_idx + 1}: {table_exc}")
+                
+                # 3. If the page is mostly blank (scanned image or diagram), attempt OCR
+                if len(page_content.strip()) < 50:
+                    logger.debug(f"Page {page_idx + 1} has very little text. Attempting OCR...")
+                    try:
+                        if pdfium_doc is None:
+                            pdfium_doc = pdfium.PdfDocument(pdf_path)
+                        pdfium_page = pdfium_doc[page_idx]
+                        
+                        # Render page at 2x resolution to PIL Image for OCR
+                        image = pdfium_page.render(scale=2).to_pil()
+                        ocr_text = pytesseract.image_to_string(image)
+                        
+                        if ocr_text.strip():
+                            page_content += "\n\n### OCR Extracted Text (Page {}):\n".format(page_idx + 1) + ocr_text.strip()
+                    except Exception as ocr_exc:
+                        # Log warning (Tesseract might not be installed on host system)
+                        logger.warning(
+                            f"OCR skipped on page {page_idx + 1}. Ensure 'tesseract' CLI tool is installed: {ocr_exc}"
+                        )
+                
+                if page_content.strip():
+                    pages_text.append(page_content)
+                    
+        result = "\n\n--- Page Break ---\n\n".join(pages_text)
+        logger.debug(f"Extracted {len(result)} characters using pdfplumber + OCR from {pdf_path}")
+        return result
+
+    except Exception as exc:
+        logger.error(f"pdfplumber extraction failed: {exc}. Falling back to basic pypdf reader.")
+        # Fallback to simple pypdf extraction if pdfplumber fails
+        try:
+            reader = PdfReader(pdf_path)
+            pages_text = []
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    pages_text.append(text)
+            result = "\n".join(pages_text)
+            logger.debug(f"Fallback extracted {len(result)} characters from {pdf_path}")
+            return result
+        except Exception as pypdf_exc:
+            logger.error(f"Fallback pypdf extraction also failed: {pypdf_exc}")
+            raise exc
 
 
 # ---------------------------------------------------------------------------

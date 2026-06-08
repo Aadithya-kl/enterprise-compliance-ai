@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './store/authStore'
 import { AppLayout } from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 import LoginPage from './pages/Login'
 import DashboardPage from './pages/Dashboard'
 import UploadPage from './pages/Upload'
@@ -40,42 +41,44 @@ export default function App() {
       <AuthProvider>
         <ThemeInit />
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
 
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<DashboardPage />} />
               <Route
-                path="documents/upload"
                 element={
-                  <ProtectedRoute allowedRoles={['admin', 'auditor']}>
-                    <UploadPage />
+                  <ProtectedRoute>
+                    <AppLayout />
                   </ProtectedRoute>
                 }
-              />
-              <Route path="qa" element={<AskQuestionPage />} />
-              <Route path="compliance" element={<ComplianceReportsPage />} />
-              <Route path="audit" element={<AuditHistoryPage />} />
-              <Route path="risk" element={<RiskAnalyticsPage />} />
-              <Route
-                path="admin/users"
-                element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <UserManagementPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="settings" element={<SettingsPage />} />
-            </Route>
+              >
+                <Route index element={<DashboardPage />} />
+                <Route
+                  path="documents/upload"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin', 'auditor']}>
+                      <UploadPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="qa" element={<AskQuestionPage />} />
+                <Route path="compliance" element={<ComplianceReportsPage />} />
+                <Route path="audit" element={<AuditHistoryPage />} />
+                <Route path="risk" element={<RiskAnalyticsPage />} />
+                <Route
+                  path="admin/users"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <UserManagementPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

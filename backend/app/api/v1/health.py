@@ -41,8 +41,7 @@ def health_check(db: Session = Depends(get_db)):
     # 3. Ollama
     try:
         import requests
-        # Use host.docker.internal if running in Docker to hit the Windows host proxy
-        resp = requests.get("http://host.docker.internal:11435/", timeout=2)
+        resp = requests.get(settings.OLLAMA_BASE_URL, timeout=2)
         if resp.status_code == 200:
             health["ollama"] = "healthy"
         else:
