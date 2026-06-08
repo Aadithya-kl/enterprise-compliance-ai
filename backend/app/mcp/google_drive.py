@@ -301,13 +301,27 @@ class GoogleDriveMCPSource(MCPSource):
         )
         return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
-    def _list_all_pdf_files(self, service, folder_id: str) -> list[dict]:
+    def _list_all_pdf_files(
+        self, service, folder_id: str, visited_folders: Optional[set[str]] = None
+    ) -> list[dict]:
         """
         Recursively list all PDF files under a given folder ID.
         Handles full pagination via nextPageToken so no files are missed
-        in large folders (>100 items).
+        in large folders (>100 items). Prevents circular loops by tracking visited folders.
         """
+        if visited_folders is None:
+            visited_folders = set()
+
+        if folder_id in visited_folders:
+            logger.warning(
+                f"Google Drive MCP: Circular folder reference detected for folder_id '{folder_id}'. Skipping."
+            )
+            return []
+
+        visited_folders.add(folder_id)
         pdf_files: list[dict] = []
+
+        logger.info(f"Google Drive MCP: Listing files in folder_id '{folder_id}'")
 
         # Collect all PDF files in the given folder
         page_token: Optional[str] = None
@@ -351,11 +365,11 @@ class GoogleDriveMCPSource(MCPSource):
             subfolders = response.get("files", [])
 
             for subfolder in subfolders:
-                logger.debug(
-                    f"Google Drive MCP: traversing sub-folder '{subfolder['name']}'"
+                logger.info(
+                    f"Google Drive MCP: traversing sub-folder '{subfolder['name']}' (id={subfolder['id']})"
                 )
                 pdf_files.extend(
-                    self._list_all_pdf_files(service, subfolder["id"])
+                    self._list_all_pdf_files(service, subfolder["id"], visited_folders=visited_folders)
                 )
 
             subfolder_token = response.get("nextPageToken")
