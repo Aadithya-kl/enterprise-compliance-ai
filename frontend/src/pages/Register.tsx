@@ -1,27 +1,43 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi } from '../api/auth'
-import { useAuth } from '../store/authStore'
 import { extractErrorMessage } from '../utils/errors'
 
-export default function LoginPage() {
-  const { login } = useAuth()
+export default function RegisterPage() {
   const navigate = useNavigate()
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [role, setRole] = useState('auditor')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccess('')
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
     setLoading(true)
     try {
-      const tokens = await authApi.login({ email, password })
-      await login(tokens)
-      navigate('/')
+      await authApi.register({
+        email,
+        full_name: fullName,
+        password,
+        role,
+      })
+      setSuccess('Registration successful! Redirecting to login...')
+      setTimeout(() => {
+        navigate('/login')
+      }, 2000)
     } catch (err: unknown) {
-      setError(extractErrorMessage(err) ?? 'Authentication failed.')
+      setError(extractErrorMessage(err) ?? 'Registration failed.')
     } finally {
       setLoading(false)
     }
@@ -44,7 +60,7 @@ export default function LoginPage() {
 
         {/* Form */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-8">
-          <h2 className="text-base font-medium text-white mb-6">Sign in to your account</h2>
+          <h2 className="text-base font-medium text-white mb-6">Create a new account</h2>
 
           {error && (
             <div className="mb-4 px-4 py-3 rounded-md bg-red-900/30 border border-red-800 text-sm text-red-400">
@@ -52,7 +68,27 @@ export default function LoginPage() {
             </div>
           )}
 
+          {success && (
+            <div className="mb-4 px-4 py-3 rounded-md bg-emerald-900/30 border border-emerald-800 text-sm text-emerald-400">
+              {success}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                className="input bg-gray-800 border-gray-700 text-white placeholder-gray-600 focus:border-brand-500"
+                placeholder="John Doe"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">
                 Email address
@@ -62,10 +98,23 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                autoComplete="email"
                 className="input bg-gray-800 border-gray-700 text-white placeholder-gray-600 focus:border-brand-500"
-                placeholder="you@company.com"
+                placeholder="you@example.com"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Role
+              </label>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="input bg-gray-800 border-gray-700 text-white placeholder-gray-600 focus:border-brand-500"
+              >
+                <option value="auditor">Auditor</option>
+                <option value="compliance_officer">Compliance Officer</option>
+              </select>
             </div>
 
             <div>
@@ -77,9 +126,22 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                autoComplete="current-password"
                 className="input bg-gray-800 border-gray-700 text-white placeholder-gray-600 focus:border-brand-500"
-                placeholder="Password"
+                placeholder="Minimum 8 characters, 1 uppercase, 1 digit"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="input bg-gray-800 border-gray-700 text-white placeholder-gray-600 focus:border-brand-500"
+                placeholder="Confirm password"
               />
             </div>
 
@@ -88,16 +150,16 @@ export default function LoginPage() {
               disabled={loading}
               className="btn-primary w-full mt-2"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Registering...' : 'Register'}
             </button>
           </form>
-        </div>
 
-        <div className="mt-6 text-center text-sm">
-          <span className="text-gray-500">Don't have an account? </span>
-          <Link to="/register" className="text-brand-500 hover:text-brand-400 font-medium">
-            Sign up
-          </Link>
+          <div className="mt-6 text-center text-sm">
+            <span className="text-gray-500">Already have an account? </span>
+            <Link to="/login" className="text-brand-500 hover:text-brand-400 font-medium">
+              Sign in
+            </Link>
+          </div>
         </div>
       </div>
     </div>
