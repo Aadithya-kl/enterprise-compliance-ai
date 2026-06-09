@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../store/authStore'
 import { formatDate, formatRole } from '../utils/formatters'
 import { integrationsApi } from '../api/integrations'
+import { extractErrorMessage } from '../utils/errors'
 
 export default function SettingsPage() {
   const { user } = useAuth()
@@ -94,8 +95,8 @@ function IntegrationsPanel() {
     try {
       const res = await integrationsApi.verifyGoogleDrive()
       setGdriveStatus(res)
-    } catch {
-      setGdriveStatus({ connected: false, message: 'Verification failed' })
+    } catch (err) {
+      setGdriveStatus({ connected: false, message: extractErrorMessage(err) ?? 'Verification failed' })
     }
   }
 
@@ -103,8 +104,8 @@ function IntegrationsPanel() {
     try {
       const res = await integrationsApi.verifyNotion()
       setNotionStatus(res)
-    } catch {
-      setNotionStatus({ connected: false, message: 'Verification failed' })
+    } catch (err) {
+      setNotionStatus({ connected: false, message: extractErrorMessage(err) ?? 'Verification failed' })
     }
   }
 
@@ -113,8 +114,8 @@ function IntegrationsPanel() {
     try {
       await integrationsApi.syncGoogleDrive()
       alert('Google Drive sync successful!')
-    } catch {
-      alert('Google Drive sync failed.')
+    } catch (err) {
+      alert(extractErrorMessage(err) ?? 'Google Drive sync failed.')
     } finally {
       setSyncingGdrive(false)
     }
@@ -125,8 +126,8 @@ function IntegrationsPanel() {
     try {
       await integrationsApi.syncNotion()
       alert('Notion sync successful!')
-    } catch {
-      alert('Notion sync failed.')
+    } catch (err) {
+      alert(extractErrorMessage(err) ?? 'Notion sync failed.')
     } finally {
       setSyncingNotion(false)
     }
