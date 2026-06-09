@@ -69,6 +69,13 @@ def retrieve_trend_documents(state: TrendWorkflowState) -> TrendWorkflowState:
                     year_filter_start = current_year - num_years + 1
                     year_filter_end = current_year
                     logger.info(f"[retrieve_trend_documents] parsed relative years: past {num_years} years ({year_filter_start} - {year_filter_end})")
+                else:
+                    # 3. Match single year anywhere in query
+                    all_years = [int(y) for y in re.findall(r'\b(?:19|20)\d{2}\b', q_lower)]
+                    if len(all_years) == 1:
+                        year_filter_start = all_years[0]
+                        year_filter_end = all_years[0]
+                        logger.info(f"[retrieve_trend_documents] parsed single year: {year_filter_start}")
 
             # Fallback to standard filename match if no year range/relative filter is found
             if year_filter_start is None:
@@ -91,11 +98,24 @@ def retrieve_trend_documents(state: TrendWorkflowState) -> TrendWorkflowState:
         years_content = {}
         for doc, meta in zip(docs, metadatas):
             if not meta: continue
-            fname = meta.get("filename") or meta.get("drive_file_name") or ""
-            # Match years like 2020, 2021
-            match = re.search(r'(19|20)\d{2}', fname)
-            if match:
-                year_str = match.group(0)
+            
+            # 1. Try to get year from metadata first
+            year_str = meta.get("year")
+            
+            # 2. Fallback to filename search
+            if not year_str:
+                fname = meta.get("filename") or meta.get("drive_file_name") or ""
+                match = re.search(r'\b(19|20)\d{2}\b', fname)
+                if match:
+                    year_str = match.group(0)
+                    
+            # 3. Fallback to scanning the chunk text itself
+            if not year_str:
+                match = re.search(r'\b(19|20)\d{2}\b', doc)
+                if match:
+                    year_str = match.group(0)
+                    
+            if year_str:
                 year_val = int(year_str)
                 # Apply filter bounds
                 if year_filter_start is not None and year_filter_end is not None:
@@ -104,7 +124,14 @@ def retrieve_trend_documents(state: TrendWorkflowState) -> TrendWorkflowState:
                 years_content.setdefault(year_str, []).append(doc)
                 
         if not years_content:
-            return {**state, "error": "No documents with years in their filename found for trend analysis."}
+            if year_filter_start is not None and year_filter_end is not None:
+                if year_filter_start == year_filter_end:
+                    err = f"No documents found matching the year {year_filter_start}."
+                else:
+                    err = f"No documents found matching the year range {year_filter_start} to {year_filter_end}."
+            else:
+                err = "No documents with years in their filename or content found for trend analysis."
+            return {**state, "error": err}
             
         documents = []
         for year in sorted(years_content.keys()):

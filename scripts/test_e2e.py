@@ -7,7 +7,7 @@ if sys.stdout.encoding.lower() != 'utf-8':
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "backend"))
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "backend", ".env"))
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["ENVIRONMENT"] = "development"

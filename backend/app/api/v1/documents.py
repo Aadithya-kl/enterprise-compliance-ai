@@ -185,6 +185,31 @@ async def upload_document(
     extra_metadata: dict = {
         "source": "google_drive" if drive_result else "local_upload",
     }
+    
+    # Extract year from filename or text content
+    import re
+    doc_year = None
+    if file.filename:
+        fn_match = re.search(r'\b(19|20)\d{2}\b', file.filename)
+        if fn_match:
+            doc_year = fn_match.group(0)
+            
+    if not doc_year and text:
+        snippet = text[:4000].lower()
+        patterns = [
+            r'\b(?:annual report|policy|fiscal year|fy|year|date|effective|version|copyright|created|issued)\b\s*[:\-]?\s*\b((?:19|20)\d{2})\b',
+            r'\b((?:19|20)\d{2})\b'
+        ]
+        for pattern in patterns:
+            txt_matches = re.findall(pattern, snippet)
+            if txt_matches:
+                doc_year = txt_matches[0]
+                break
+                
+    if doc_year:
+        extra_metadata["year"] = doc_year
+        logger.info(f"Extracted year '{doc_year}' for metadata of '{file.filename}'")
+
     if drive_result:
         extra_metadata["drive_file_id"] = drive_result.file_id
         extra_metadata["drive_file_name"] = drive_result.file_name
