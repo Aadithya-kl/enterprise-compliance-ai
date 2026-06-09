@@ -203,7 +203,7 @@ class GoogleDriveMCPSource(MCPSource):
             return []
 
         try:
-            pdf_files = self._list_all_pdf_files(
+            drive_files = self._list_all_files(
                 service, settings.GOOGLE_DRIVE_FOLDER_ID
             )
         except Exception as exc:
@@ -211,19 +211,17 @@ class GoogleDriveMCPSource(MCPSource):
             return []
 
         logger.info(
-            f"Google Drive MCP: found {len(pdf_files)} PDF files "
+            f"Google Drive MCP: found {len(drive_files)} files "
             f"in folder {settings.GOOGLE_DRIVE_FOLDER_ID}"
         )
 
         # Load already-ingested file IDs from ChromaDB for incremental sync
         already_ingested = self._get_already_ingested_ids()
 
-        from app.services.rag_service import extract_text_from_pdf
-
         documents: list[MCPDocument] = []
         skipped = 0
 
-        for file_meta in pdf_files:
+        for file_meta in drive_files:
             file_id = file_meta["id"]
             filename = file_meta["name"]
 
@@ -236,14 +234,22 @@ class GoogleDriveMCPSource(MCPSource):
 
             try:
                 t = time.monotonic()
-                pdf_bytes = self._download_file(service, file_id)
+                file_bytes = self._download_file(service, file_id)
 
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                    tmp.write(pdf_bytes)
+                is_docx = filename.lower().endswith(".docx")
+                suffix = ".docx" if is_docx else ".pdf"
+
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(file_bytes)
                     tmp_path = tmp.name
 
                 try:
-                    text = extract_text_from_pdf(tmp_path)
+                    if is_docx:
+                        from app.services.rag_service import extract_text_from_docx
+                        text = extract_text_from_docx(tmp_path)
+                    else:
+                        from app.services.rag_service import extract_text_from_pdf
+                        text = extract_text_from_pdf(tmp_path)
                 finally:
                     os.unlink(tmp_path)
 
@@ -279,14 +285,14 @@ class GoogleDriveMCPSource(MCPSource):
                     exc_info=True,
                 )
 
-        self.last_total_found = len(pdf_files)
+        self.last_total_found = len(drive_files)
         self.last_skipped_count = skipped
 
         logger.info(
             f"Google Drive MCP: sync complete — "
             f"{len(documents)} new documents loaded, "
             f"{skipped} skipped (already ingested), "
-            f"{len(pdf_files) - len(documents) - skipped} failed."
+            f"{len(drive_files) - len(documents) - skipped} failed."
         )
         return documents
 
@@ -301,11 +307,11 @@ class GoogleDriveMCPSource(MCPSource):
         )
         return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
-    def _list_all_pdf_files(
+    def _list_all_files(
         self, service, folder_id: str, visited_folders: Optional[set[str]] = None
     ) -> list[dict]:
         """
-        Recursively list all PDF files under a given folder ID.
+        Recursively list all PDF and DOCX files under a given folder ID.
         Handles full pagination via nextPageToken so no files are missed
         in large folders (>100 items). Prevents circular loops by tracking visited folders.
         """
@@ -319,16 +325,16 @@ class GoogleDriveMCPSource(MCPSource):
             return []
 
         visited_folders.add(folder_id)
-        pdf_files: list[dict] = []
+        drive_files: list[dict] = []
 
         logger.info(f"Google Drive MCP: Listing files in folder_id '{folder_id}'")
 
-        # Collect all PDF files in the given folder
+        # Collect all PDF and DOCX files in the given folder
         page_token: Optional[str] = None
         while True:
             query = (
                 f"'{folder_id}' in parents "
-                f"and mimeType='application/pdf' "
+                f"and (mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document') "
                 f"and trashed=false"
             )
             kwargs = {
@@ -340,7 +346,7 @@ class GoogleDriveMCPSource(MCPSource):
                 kwargs["pageToken"] = page_token
 
             response = service.files().list(**kwargs).execute()
-            pdf_files.extend(response.get("files", []))
+            drive_files.extend(response.get("files", []))
             page_token = response.get("nextPageToken")
             if not page_token:
                 break
@@ -375,15 +381,15 @@ class GoogleDriveMCPSource(MCPSource):
                 logger.info(
                     f"Google Drive MCP: traversing sub-folder '{name}' (id={subfolder['id']})"
                 )
-                pdf_files.extend(
-                    self._list_all_pdf_files(service, subfolder["id"], visited_folders=visited_folders)
+                drive_files.extend(
+                    self._list_all_files(service, subfolder["id"], visited_folders=visited_folders)
                 )
 
             subfolder_token = response.get("nextPageToken")
             if not subfolder_token:
                 break
 
-        return pdf_files
+        return drive_files
 
     def _download_file(self, service, file_id: str) -> bytes:
         """Download a file by ID and return raw bytes."""

@@ -24,6 +24,7 @@ Upload pipeline (in order):
 """
 
 import os
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -252,6 +253,8 @@ def ask_question(
 
     results = retrieve_chunks(payload.question)
     chunks = results.get("documents", [])
+    metadatas = results.get("metadata", [])
+    distances = results.get("distances", [])
 
     if not chunks:
         return QuestionResponse(
@@ -263,13 +266,38 @@ def ask_question(
             sources=[],
         )
 
-    answer = generate_answer(payload.question, chunks)
-    sources = [m for m in results.get("metadata", []) if m]
+    formatted_chunks = []
+    for doc, meta, dist in zip(chunks, metadatas, distances):
+        fname = meta.get("filename") or meta.get("drive_file_name") or meta.get("title") or "Unknown"
+        chunk_id = meta.get("id", str(uuid.uuid4())[:8])
+        conf = max(0.0, 100.0 - (float(dist) * 100.0)) if dist is not None else 0.0
+        page_num = meta.get("page_number", "N/A")
+        heading = meta.get("section_heading", "N/A")
+        
+        header = f"[File Name: {fname} | Page Number: {page_num} | Chunk ID: {chunk_id} | Section Heading: {heading} | Confidence Score: {conf:.1f}%]"
+        formatted_chunks.append(f"{header}\n{doc}")
+
+    sources = [m for m in metadatas if m]
+
+    diagnostics = {
+        "matched_filenames": results.get("matched_filenames", []),
+        "retrieved_chunks_per_filename": results.get("retrieved_chunks_per_filename", {}),
+        "total_chunks_retrieved": results.get("total_chunks_retrieved", 0),
+        "retrieval_mode": results.get("retrieval_mode", "standard_qa"),
+        "where_clause": results.get("where_clause")
+    }
+
+    answer = generate_answer(
+        question=payload.question,
+        context_chunks=formatted_chunks,
+        comparison_mode=(diagnostics["retrieval_mode"] == "multi_document_comparison")
+    )
 
     return QuestionResponse(
         question=payload.question,
         answer=answer,
         sources=sources,
+        diagnostics=diagnostics
     )
 
 

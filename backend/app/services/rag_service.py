@@ -134,6 +134,19 @@ def extract_text_from_pdf(pdf_path: str) -> str:
             logger.error(f"Fallback pypdf extraction also failed: {pypdf_exc}")
             raise exc
 
+def extract_text_from_docx(docx_path: str) -> str:
+    """Extract text from a DOCX file using python-docx."""
+    import docx
+    try:
+        doc = docx.Document(docx_path)
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        text = "\n".join(paragraphs)
+        logger.debug(f"Extracted {len(text)} characters from DOCX {docx_path}")
+        return text
+    except Exception as exc:
+        logger.error(f"python-docx extraction failed: {exc}", exc_info=True)
+        raise exc
+
 
 # ---------------------------------------------------------------------------
 # Chunking
@@ -212,7 +225,46 @@ def store_document_chunks(
 # Retrieval
 # ---------------------------------------------------------------------------
 
-def retrieve_chunks(query: str, n_results: int = 5) -> dict:
+import re
+
+def detect_comparison_intent(query: str) -> bool:
+    keywords = ["compare", "versus", "vs", "difference", "between", "trend", "change"]
+    q_lower = query.lower()
+    return any(re.search(r'\b' + kw + r'\b', q_lower) for kw in keywords)
+
+def extract_filenames_from_query(query: str, metadatas: list[dict]) -> list[str]:
+    filenames = set()
+    for meta in metadatas:
+        if not meta: continue
+        if meta.get("filename"): filenames.add(meta.get("filename"))
+        if meta.get("drive_file_name"): filenames.add(meta.get("drive_file_name"))
+        if meta.get("title"): filenames.add(meta.get("title"))
+    
+    matched = set()
+    q_lower = query.lower()
+    
+    for fname in filenames:
+        base = os.path.splitext(fname)[0].lower()
+        fname_lower = fname.lower()
+        
+        if base in q_lower or fname_lower in q_lower:
+            matched.add(fname)
+            continue
+            
+        base_spaced = base.replace('_', ' ')
+        if base_spaced in q_lower:
+            matched.add(fname)
+            continue
+            
+        year_match = re.search(r'(20\d{2})', fname_lower)
+        if year_match:
+            year = year_match.group(1)
+            if year in q_lower:
+                matched.add(fname)
+                
+    return list(matched)
+
+def retrieve_chunks(query: str, n_results: int = 10) -> dict:
     """
     Retrieve the most relevant chunks for a query.
     Clamps n_results to the collection size to prevent ChromaDB errors.
@@ -220,21 +272,104 @@ def retrieve_chunks(query: str, n_results: int = 5) -> dict:
     try:
         total = _collection.count()
         if total == 0:
-            return {"documents": [], "metadata": []}
+            return {"documents": [], "metadata": [], "distances": [], "matched_filenames": [], "chunks_per_file": {}, "retrieved_chunk_count": 0, "where_clause": None, "comparison_mode": False}
 
-        safe_n = min(n_results, total)
-        results = _collection.query(query_texts=[query], n_results=safe_n)
+        # Auto-detect filenames for metadata filtering
+        all_meta = _collection.get(include=["metadatas"]).get("metadatas") or []
+        target_fnames = extract_filenames_from_query(query, all_meta)
+        
+        comparison_mode = False
+        if len(target_fnames) > 1:
+            comparison_mode = detect_comparison_intent(query)
+            
+        if not target_fnames:
+            safe_n = min(n_results, total)
+            results = _collection.query(query_texts=[query], n_results=safe_n)
 
-        if not results["documents"] or not results["documents"][0]:
-            return {"documents": [], "metadata": []}
+            docs = results["documents"][0] if results.get("documents") else []
+            metas = results["metadatas"][0] if results.get("metadatas") else []
+            dists = results.get("distances", [[]])[0] if results.get("distances") else []
+
+            return {
+                "documents": docs,
+                "metadata": metas,
+                "distances": dists,
+                "matched_filenames": [],
+                "retrieved_chunks_per_filename": {},
+                "total_chunks_retrieved": len(docs),
+                "where_clause": None,
+                "retrieval_mode": "standard_qa"
+            }
+
+        logger.info(f"Detected filenames in query for filtering: {target_fnames}")
+        
+        all_docs_by_file = []
+        where_clauses = []
+        
+        fetch_per_file = max(n_results, 6)
+        
+        for fname in target_fnames:
+            where_clause = {
+                "$or": [
+                    {"filename": {"$eq": fname}},
+                    {"drive_file_name": {"$eq": fname}},
+                    {"title": {"$eq": fname}}
+                ]
+            }
+            where_clauses.append(where_clause)
+            
+            res = _collection.query(query_texts=[query], n_results=fetch_per_file, where=where_clause)
+            if res and res.get("documents") and res["documents"][0]:
+                file_dists = res.get("distances", [[0.0]*len(res["documents"][0])])[0]
+                file_docs = res["documents"][0]
+                file_metas = res["metadatas"][0]
+                
+                # Zip and sort by distance
+                file_combined = list(zip(file_dists, file_docs, file_metas, [fname]*len(file_docs)))
+                file_combined.sort(key=lambda x: x[0])
+                all_docs_by_file.append(file_combined)
+
+        docs, metas, dists = [], [], []
+        chunks_per_file = {fname: 0 for fname in target_fnames}
+        
+        # Guarantee minimum 3 chunks from each file before filling remaining slots
+        min_guarantee = 3
+        for i in range(min_guarantee):
+            for f_docs in all_docs_by_file:
+                if i < len(f_docs):
+                    dist, doc, meta, fname = f_docs[i]
+                    dists.append(dist)
+                    docs.append(doc)
+                    metas.append(meta)
+                    chunks_per_file[fname] += 1
+                    
+        # Fill remaining slots using round-robin interleaving
+        idx = min_guarantee
+        while len(docs) < n_results and any(idx < len(f_docs) for f_docs in all_docs_by_file):
+            for f_docs in all_docs_by_file:
+                if len(docs) >= n_results:
+                    break
+                if idx < len(f_docs):
+                    dist, doc, meta, fname = f_docs[idx]
+                    dists.append(dist)
+                    docs.append(doc)
+                    metas.append(meta)
+                    chunks_per_file[fname] += 1
+            idx += 1
 
         return {
-            "documents": results["documents"][0],
-            "metadata": results["metadatas"][0],
+            "documents": docs,
+            "metadata": metas,
+            "distances": dists,
+            "matched_filenames": target_fnames,
+            "retrieved_chunks_per_filename": chunks_per_file,
+            "total_chunks_retrieved": len(docs),
+            "where_clause": {"$or": where_clauses},
+            "retrieval_mode": "multi_document_comparison" if comparison_mode else "standard_qa"
         }
     except Exception as exc:
         logger.error(f"ChromaDB retrieval error: {exc}", exc_info=True)
-        return {"documents": [], "metadata": []}
+        return {"documents": [], "metadata": [], "distances": [], "matched_filenames": [], "retrieved_chunks_per_filename": {}, "total_chunks_retrieved": 0, "where_clause": None, "retrieval_mode": "standard_qa"}
 
 
 def get_chunks_by_type(document_type: str) -> list[str]:
@@ -253,26 +388,38 @@ def get_chunks_by_type(document_type: str) -> list[str]:
 # Q&A generation
 # ---------------------------------------------------------------------------
 
-def generate_answer(question: str, context_chunks: list[str]) -> str:
+def generate_answer(question: str, context_chunks: list[str], comparison_mode: bool = False) -> str:
     """
     Generate a grounded answer using Llama3 via Ollama.
     The model is instructed to cite only the provided context.
     """
     context = "\n\n".join(context_chunks)
-    prompt = f"""You are an Enterprise Compliance Assistant.
+    
+    if comparison_mode:
+        sys_prompt = """You are an Enterprise Compliance Assistant performing a side-by-side document comparison.
+
+Instructions:
+1. Compare the provided sources directly against each other.
+2. Identify differences, additions, and trends between the documents.
+3. Answer using ONLY the provided context. If the answer is not in the context, respond with:
+   "The uploaded documents do not contain sufficient information to answer this question."
+4. Do not speculate or fabricate information. Never invent sources like GDPR or PCI DSS unless explicitly in the text.
+5. For every piece of information, cite the source EXACTLY in this format:
+   [File Name: <Name> | Page Number: <Num> | Chunk ID: <ID> | Section Heading: <Heading> | Confidence Score: <Score>%]
+6. Structure your comparison with clear headings and bullet points. Be concise and professional."""
+    else:
+        sys_prompt = """You are an Enterprise Compliance Assistant.
 
 Instructions:
 1. Answer using ONLY the provided context.
 2. If the answer is not in the context, respond with:
    "The uploaded documents do not contain sufficient information to answer this question."
-3. Do not speculate or fabricate information.
-4. Be concise and professional.
+3. Do not speculate or fabricate information. Never invent sources like GDPR or PCI DSS unless explicitly in the text.
+4. For every piece of information, cite the source EXACTLY in this format:
+   [File Name: <Name> | Page Number: <Num> | Chunk ID: <ID> | Section Heading: <Heading> | Confidence Score: <Score>%]
+5. Be concise and professional."""
 
-Context:
-{context}
-
-Question:
-{question}"""
+    prompt = f"{sys_prompt}\n\nContext:\n{context}\n\nQuestion:\n{question}"
 
     try:
         response = ollama.chat(

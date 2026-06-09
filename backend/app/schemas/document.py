@@ -28,10 +28,13 @@ class QuestionRequest(BaseModel):
     question: str
 
 
+from typing import Optional
+
 class QuestionResponse(BaseModel):
     question: str
     answer: str
     sources: list[dict]
+    diagnostics: dict | None = None
 
 
 class AnalysisResponse(BaseModel):

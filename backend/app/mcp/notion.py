@@ -50,17 +50,34 @@ class NotionMCPSource(MCPSource):
             logger.error(f"Notion MCP: failed to list pages: {exc}")
             return []
 
-        already_ingested = self._get_already_ingested_ids()
+        already_ingested = self._get_already_ingested_info()
         documents: list[MCPDocument] = []
         skipped = 0
+
+        current_page_ids = {page["id"] for page in pages}
+
+        # Remove orphaned vectors (pages deleted from Notion)
+        orphans = set(already_ingested.keys()) - current_page_ids
+        if orphans:
+            logger.info(f"Notion MCP: removing {len(orphans)} orphaned pages from ChromaDB")
+            self._delete_notion_pages(orphans)
 
         for page in pages:
             try:
                 page_id = page["id"]
+                last_edited_time = page.get("last_edited_time", "")
+
                 if page_id in already_ingested:
-                    logger.debug(f"Notion MCP: skipping page {page_id} (already ingested)")
-                    skipped += 1
-                    continue
+                    ingested_time = already_ingested[page_id]
+                    # If we have a timestamp and it matches, skip.
+                    if ingested_time and ingested_time == last_edited_time:
+                        logger.debug(f"Notion MCP: skipping page {page_id} (unchanged)")
+                        skipped += 1
+                        continue
+                    else:
+                        # Page was updated or didn't have a timestamp. Remove old chunks.
+                        logger.info(f"Notion MCP: updating page {page_id}")
+                        self._delete_notion_pages({page_id})
 
                 title = self._extract_title(page)
                 text = self._extract_page_text(client, page_id)
@@ -78,6 +95,7 @@ class NotionMCPSource(MCPSource):
                         metadata={
                             "source": self.source_name,
                             "notion_page_id": page_id,
+                            "last_edited_time": last_edited_time,
                             "title": title,
                         },
                     )
@@ -94,22 +112,37 @@ class NotionMCPSource(MCPSource):
         logger.info(f"Notion MCP: sync complete — {len(documents)} new pages loaded, {skipped} skipped.")
         return documents
 
-    def _get_already_ingested_ids(self) -> set[str]:
-        """Query ChromaDB for notion_page_id to support incremental sync."""
+    def _get_already_ingested_info(self) -> dict[str, str]:
+        """Query ChromaDB for notion_page_id and last_edited_time to support sync."""
         try:
             from app.services.rag_service import _collection
             results = _collection.get(
                 where={"source": {"$eq": "notion"}},
                 include=["metadatas"],
             )
-            ids: set[str] = set()
+            info: dict[str, str] = {}
             for meta in (results.get("metadatas") or []):
                 if meta and meta.get("notion_page_id"):
-                    ids.add(meta["notion_page_id"])
-            return ids
+                    page_id = meta["notion_page_id"]
+                    # If multiple chunks exist, they should have the same timestamp, but just in case:
+                    info[page_id] = meta.get("last_edited_time", "")
+            return info
         except Exception as exc:
             logger.debug(f"Notion MCP: could not load ingested IDs: {exc}")
-            return set()
+            return {}
+
+    def _delete_notion_pages(self, page_ids: set[str] | list[str]) -> None:
+        """Delete all chunks associated with specific notion_page_ids."""
+        if not page_ids:
+            return
+        try:
+            from app.services.rag_service import _collection
+            # ChromaDB where condition for in-list is $in
+            _collection.delete(
+                where={"notion_page_id": {"$in": list(page_ids)}}
+            )
+        except Exception as exc:
+            logger.warning(f"Notion MCP: failed to delete old vectors: {exc}")
 
     def verify_connection(self) -> dict:
         """
