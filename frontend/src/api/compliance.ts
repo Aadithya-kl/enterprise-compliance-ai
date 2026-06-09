@@ -68,4 +68,11 @@ export const complianceApi = {
     })
     return res.data
   },
+
+  runTrendWorkflow: async (
+    query?: string
+  ): Promise<any> => {
+    const res = await workflowClient.post('/workflow/trend', { query })
+    return res.data
+  },
 }

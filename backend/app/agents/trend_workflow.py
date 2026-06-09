@@ -46,12 +46,37 @@ def retrieve_trend_documents(state: TrendWorkflowState) -> TrendWorkflowState:
         query = state.get("query")
         where_clause = None
         
+        year_filter_start = None
+        year_filter_end = None
+        
         if query:
-            all_meta = _collection.get(include=["metadatas"]).get("metadatas") or []
-            target_fnames = extract_filenames_from_query(query, all_meta)
-            logger.info(f"[retrieve_trend_documents] target_fnames: {target_fnames}")
-            if target_fnames:
-                where_clause = {"filename": {"$in": target_fnames}}
+            q_lower = query.lower()
+            # 1. Match range like "2010 to 2015" or "2010-2015" or "2010 and 2015"
+            range_match = re.search(r'\b(19|20)\d{2}\s*(?:to|and|through|-)\s*(19|20)\d{2}\b', q_lower)
+            if range_match:
+                found_years = [int(y) for y in re.findall(r'\b(?:19|20)\d{2}\b', range_match.group(0))]
+                if len(found_years) == 2:
+                    year_filter_start = min(found_years)
+                    year_filter_end = max(found_years)
+                    logger.info(f"[retrieve_trend_documents] parsed year range: {year_filter_start} - {year_filter_end}")
+            else:
+                # 2. Match "past X years" or "last X years"
+                past_match = re.search(r'\b(?:past|last)\s+(\d+)\s+years?\b', q_lower)
+                if past_match:
+                    num_years = int(past_match.group(1))
+                    import datetime
+                    current_year = datetime.datetime.now().year
+                    year_filter_start = current_year - num_years + 1
+                    year_filter_end = current_year
+                    logger.info(f"[retrieve_trend_documents] parsed relative years: past {num_years} years ({year_filter_start} - {year_filter_end})")
+
+            # Fallback to standard filename match if no year range/relative filter is found
+            if year_filter_start is None:
+                all_meta = _collection.get(include=["metadatas"]).get("metadatas") or []
+                target_fnames = extract_filenames_from_query(query, all_meta)
+                logger.info(f"[retrieve_trend_documents] target_fnames: {target_fnames}")
+                if target_fnames:
+                    where_clause = {"filename": {"$in": target_fnames}}
                 
         if where_clause:
             logger.info(f"[retrieve_trend_documents] using where_clause: {where_clause}")
@@ -70,8 +95,13 @@ def retrieve_trend_documents(state: TrendWorkflowState) -> TrendWorkflowState:
             # Match years like 2020, 2021
             match = re.search(r'(19|20)\d{2}', fname)
             if match:
-                year = match.group(0)
-                years_content.setdefault(year, []).append(doc)
+                year_str = match.group(0)
+                year_val = int(year_str)
+                # Apply filter bounds
+                if year_filter_start is not None and year_filter_end is not None:
+                    if not (year_filter_start <= year_val <= year_filter_end):
+                        continue
+                years_content.setdefault(year_str, []).append(doc)
                 
         if not years_content:
             return {**state, "error": "No documents with years in their filename found for trend analysis."}
