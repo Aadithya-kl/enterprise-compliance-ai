@@ -28,7 +28,12 @@ uploads/
 *.json
 service-account.json
 google-credentials.json
+credentials.json
 compliance-ai-*.json
+
+# SSL Keys & Certificates
+*.pem
+*.key
 
 # VS Code
 .vscode/
