@@ -41,7 +41,7 @@ export default function RiskAnalyticsPage() {
       </div>
 
       {/* Top stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {['high_risk', 'medium_risk', 'low_risk'].map((key) => {
           const labels = { high_risk: 'High Risk', medium_risk: 'Medium Risk', low_risk: 'Low Risk' }
           const colors = { high_risk: 'text-red-600 dark:text-red-400', medium_risk: 'text-amber-600 dark:text-amber-400', low_risk: 'text-green-600 dark:text-green-400' }
@@ -119,7 +119,7 @@ export default function RiskAnalyticsPage() {
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Monthly Trend Detail</h2>
         </div>
-        <div className="table-container rounded-none border-0">
+        <div className="table-container rounded-none border-0 overflow-x-auto">
           <table className="table">
             <thead>
               <tr>

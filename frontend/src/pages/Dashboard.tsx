@@ -50,7 +50,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Audits" value={stats?.total_audits ?? 0} loading={statsLoading} />
         <StatCard
           label="Avg Compliance Score"
@@ -91,7 +91,7 @@ export default function DashboardPage() {
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
             Knowledge Sources Metrics
           </h2>
-          <div className="table-container rounded-none border-0">
+          <div className="table-container rounded-none border-0 overflow-x-auto">
             <table className="table">
               <thead>
                 <tr>
@@ -129,6 +129,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Analytics Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Trend chart */}
         <div className="card p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
@@ -169,7 +171,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Risk distribution pie */}
-        <div className="card p-5">
+        <div className="card p-5 lg:col-span-1">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
             Risk Distribution
           </h2>
@@ -211,13 +213,15 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
 
-
-      {/* Audit volume bar chart */}
-      <div className="card p-5">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
-          Monthly Audit Volume
-        </h2>
+      {/* Volume & Recent Audits Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Audit volume bar chart */}
+        <div className="card p-5 lg:col-span-1">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
+            Monthly Audit Volume
+          </h2>
           {trend.length === 0 ? (
             <div className="h-[180px] flex items-center justify-center text-sm text-gray-400">
               No data yet
@@ -237,46 +241,47 @@ export default function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           )}
-      </div>
-
-      {/* Recent audits */}
-      <div className="card">
-        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Recent Audit Reports
-          </h2>
         </div>
-        <div className="table-container rounded-none border-0">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Risk</th>
-                <th>Score</th>
-                <th>Violations</th>
-                <th>Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-              {recentAudits.length === 0 ? (
+
+        {/* Recent audits */}
+        <div className="card lg:col-span-2">
+          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Recent Audit Reports
+            </h2>
+          </div>
+          <div className="table-container rounded-none border-0 overflow-x-auto">
+            <table className="table">
+              <thead>
                 <tr>
-                  <td colSpan={5} className="text-center text-gray-400 py-8">
-                    No audit reports yet
-                  </td>
+                  <th>ID</th>
+                  <th>Risk</th>
+                  <th>Score</th>
+                  <th>Violations</th>
+                  <th>Timestamp</th>
                 </tr>
-              ) : (
-                recentAudits.map((r) => (
-                  <tr key={r.id}>
-                    <td className="font-mono text-xs">#{r.id}</td>
-                    <td><span className={riskBadgeClass(r.risk)}>{r.risk}</span></td>
-                    <td><span className={`font-semibold ${scoreColor(r.compliance_score)}`}>{r.compliance_score}%</span></td>
-                    <td>{r.violation_count}</td>
-                    <td className="text-gray-500">{r.audit_timestamp}</td>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                {recentAudits.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center text-gray-400 py-8">
+                      No audit reports yet
+                    </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  recentAudits.map((r) => (
+                    <tr key={r.id}>
+                      <td className="font-mono text-xs">#{r.id}</td>
+                      <td><span className={riskBadgeClass(r.risk)}>{r.risk}</span></td>
+                      <td><span className={`font-semibold ${scoreColor(r.compliance_score)}`}>{r.compliance_score}%</span></td>
+                      <td>{r.violation_count}</td>
+                      <td className="text-gray-500">{r.audit_timestamp}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

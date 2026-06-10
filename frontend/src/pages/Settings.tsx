@@ -35,7 +35,7 @@ export default function SettingsPage() {
             <p className="text-sm text-gray-500">{user?.email}</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-xs text-gray-500 mb-0.5">Role</p>
             <p className="font-medium text-gray-900 dark:text-white">{formatRole(user?.role ?? '')}</p>
@@ -145,7 +145,7 @@ function IntegrationsPanel() {
         <p className="text-xs text-gray-500 mb-4">
           {gdriveStatus?.message || 'Sync compliance documents directly from Google Drive.'}
         </p>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button onClick={verifyGdrive} className="btn btn-secondary text-xs py-1.5">Verify Connection</button>
           <button onClick={syncGdrive} disabled={syncingGdrive} className="btn btn-primary text-xs py-1.5">
             {syncingGdrive ? 'Syncing...' : 'Sync Documents'}
@@ -163,7 +163,7 @@ function IntegrationsPanel() {
         <p className="text-xs text-gray-500 mb-4">
           {notionStatus?.message || 'Sync compliance policies directly from Notion databases.'}
         </p>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button onClick={verifyNotion} className="btn btn-secondary text-xs py-1.5">Verify Connection</button>
           <button onClick={syncNotion} disabled={syncingNotion} className="btn btn-primary text-xs py-1.5">
             {syncingNotion ? 'Syncing...' : 'Sync Documents'}
