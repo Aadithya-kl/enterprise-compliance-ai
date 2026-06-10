@@ -11,7 +11,7 @@ export function AppLayout() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <TopNav onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
       <main className="lg:ml-sidebar pt-16 min-h-screen transition-all duration-300">
-        <div className="p-4 md:p-6 max-w-screen-2xl mx-auto">
+        <div className="p-3 md:p-4 lg:p-6 max-w-screen-2xl mx-auto">
           <Outlet />
         </div>
       </main>

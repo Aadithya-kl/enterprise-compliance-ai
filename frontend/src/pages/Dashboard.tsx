@@ -50,7 +50,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Audits" value={stats?.total_audits ?? 0} loading={statsLoading} />
         <StatCard
           label="Avg Compliance Score"
@@ -141,7 +141,7 @@ export default function DashboardPage() {
               No data yet
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={trend} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
                 <defs>
                   <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
@@ -180,7 +180,7 @@ export default function DashboardPage() {
               No data yet
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
                   data={distribution}
@@ -227,7 +227,7 @@ export default function DashboardPage() {
               No data yet
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={180}>
+            <ResponsiveContainer width="100%" height={300}>
               <BarChart data={trend} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />

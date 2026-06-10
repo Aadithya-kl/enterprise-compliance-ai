@@ -83,16 +83,16 @@ export default function AuditHistoryPage() {
         {/* Detail */}
         {selected ? (
           <div className="card p-5 space-y-4">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
                   Audit Report #{selected.id}
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">{selected.audit_timestamp}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className={riskBadgeClass(selected.risk)}>{selected.risk}</span>
-                <div className="flex gap-1 ml-2">
+                <div className="flex flex-wrap gap-1">
                   <button onClick={() => integrationsApi.exportReportPdf(selected.id)} className="btn-secondary text-xs px-2 py-1">Export PDF</button>
                   <button onClick={() => integrationsApi.exportReportDocx(selected.id)} className="btn-secondary text-xs px-2 py-1">Export DOCX</button>
                 </div>

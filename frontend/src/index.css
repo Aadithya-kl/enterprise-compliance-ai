@@ -111,11 +111,11 @@
 
   /* Page heading */
   .page-heading {
-    @apply text-xl font-semibold text-gray-900 dark:text-white;
+    @apply text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 dark:text-white;
   }
 
   .page-subheading {
-    @apply text-sm text-gray-500 dark:text-gray-400;
+    @apply text-xs md:text-sm text-gray-500 dark:text-gray-400;
   }
 }
 
