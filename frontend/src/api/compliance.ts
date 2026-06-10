@@ -69,10 +69,14 @@ export const complianceApi = {
     return res.data
   },
 
-  runTrendWorkflow: async (
-    query?: string
-  ): Promise<any> => {
-    const res = await workflowClient.post('/workflow/trend', { query })
+
+  getAnalyticsTrends: async (): Promise<any> => {
+    const res = await client.get('/analytics/trends')
+    return res.data
+  },
+
+  queryComplianceIntelligence: async (query: string): Promise<any> => {
+    const res = await client.post('/analytics/query', { query })
     return res.data
   },
 }

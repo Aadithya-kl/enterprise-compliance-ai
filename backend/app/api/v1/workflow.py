@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.agents.workflow import WorkflowState, run_compliance_workflow
-from app.agents.trend_workflow import run_trend_pipeline
 from app.core.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.db.session import get_db
@@ -90,60 +89,3 @@ def run_workflow(
         executive_summary=final_report.get("executive_summary"),
     )
 
-class TrendWorkflowResponse(BaseModel):
-    success: bool
-    quarterly_analysis: Optional[str] = None
-    annual_analysis: Optional[str] = None
-    five_year_analysis: Optional[str] = None
-    executive_summary: Optional[str] = None
-    compliance_maturity_progression: Optional[str] = None
-    risk_evolution_summary: Optional[str] = None
-    error: Optional[str] = None
-
-import json
-
-class TrendWorkflowRequest(BaseModel):
-    query: Optional[str] = None
-
-def _ensure_str(val):
-    if val is None: return None
-    if isinstance(val, str): return val
-    return json.dumps(val, indent=2)
-
-@router.post(
-    "/trend",
-    response_model=TrendWorkflowResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Run the multi-year trend analysis workflow",
-)
-def run_trend_workflow(
-    payload: Optional[TrendWorkflowRequest] = None,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Executes the multi-year trend analysis pipeline:
-    Retrieve Documents -> Year Classification -> Trend Analysis -> Risk Trend -> Executive Summary
-    """
-    logger.info(f"Trend workflow triggered: user_id={current_user.id}")
-
-    query = payload.query if payload else None
-    final_state = run_trend_pipeline(user_id=current_user.id, query=query)
-
-    if final_state.get("error"):
-        logger.error(f"Trend Workflow failed: {final_state['error']}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=final_state["error"],
-        )
-
-    report = final_state.get("final_trend_report", {})
-
-    return TrendWorkflowResponse(
-        success=True,
-        quarterly_analysis=_ensure_str(report.get("quarterly_analysis")),
-        annual_analysis=_ensure_str(report.get("annual_analysis")),
-        five_year_analysis=_ensure_str(report.get("five_year_analysis")),
-        executive_summary=_ensure_str(report.get("executive_summary")),
-        compliance_maturity_progression=_ensure_str(report.get("compliance_maturity_progression")),
-        risk_evolution_summary=_ensure_str(report.get("risk_evolution_summary")),
-    )

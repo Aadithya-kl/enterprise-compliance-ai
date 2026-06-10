@@ -21,6 +21,7 @@ from app.models.user import User, UserRole
 
 # Ensure all models are imported so Base.metadata is populated
 import app.models.audit_report  # noqa: F401
+import app.models.compliance_violation  # noqa: F401
 
 configure_logging()
 logger = get_logger(__name__)
@@ -132,6 +133,86 @@ def _auto_migrate_schema():
                 """))
                 conn.commit()
                 logger.info("Column created_by_user_id added successfully.")
+
+        # Backfill existing audits into compliance_violations if empty
+        from app.db.session import SessionLocal
+        from app.models.audit_report import AuditReport
+        from app.models.compliance_violation import ComplianceViolation
+        import json
+        from datetime import datetime
+        
+        db = SessionLocal()
+        try:
+            violation_count = db.query(ComplianceViolation).count()
+            if violation_count == 0:
+                reports = db.query(AuditReport).all()
+                if reports:
+                    logger.info(f"Backfilling structured compliance_violations for {len(reports)} existing reports...")
+                    for r in reports:
+                        try:
+                            # Parse audit timestamp to datetime
+                            try:
+                                report_dt = datetime.strptime(r.audit_timestamp, "%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                report_dt = r.created_at or datetime.now()
+
+                            # Deserialise issues
+                            issues = []
+                            if r.issues:
+                                try:
+                                    issues = json.loads(r.issues)
+                                except Exception:
+                                    issues = [r.issues]
+                                    
+                            for issue in issues:
+                                issue_lower = issue.lower()
+                                
+                                severity = "Medium"
+                                if any(kw in issue_lower for kw in ["critical", "mfa", "encryption", "credentials"]):
+                                    severity = "Critical"
+                                elif any(kw in issue_lower for kw in ["high", "password", "access", "unauthorized"]):
+                                    severity = "High"
+                                elif any(kw in issue_lower for kw in ["low", "minor", "version", "formatting"]):
+                                    severity = "Low"
+                                    
+                                v_type = "Other"
+                                if any(kw in issue_lower for kw in ["mfa", "auth", "login", "password", "privilege"]):
+                                    v_type = "Access Control"
+                                elif any(kw in issue_lower for kw in ["encrypt", "aes", "ssl", "tls", "rest", "transit"]):
+                                    v_type = "Data Encryption"
+                                elif any(kw in issue_lower for kw in ["audit", "log", "history", "record"]):
+                                    v_type = "Audit Logging"
+                                elif any(kw in issue_lower for kw in ["privacy", "gdpr", "personal", "pii"]):
+                                    v_type = "Data Privacy"
+                                    
+                                dept = "General"
+                                if any(kw in issue_lower for kw in ["it", "system", "administrator", "network"]):
+                                    dept = "IT"
+                                elif any(kw in issue_lower for kw in ["finance", "billing", "payment"]):
+                                    dept = "Finance"
+                                elif any(kw in issue_lower for kw in ["hr", "employee", "staff"]):
+                                    dept = "HR"
+
+                                db.add(
+                                    ComplianceViolation(
+                                        report_id=r.id,
+                                        violation_type=v_type,
+                                        severity=severity,
+                                        department=dept,
+                                        compliance_score=r.compliance_score,
+                                        regulation_category="Compliance Standards",
+                                        report_date=report_dt,
+                                        description=issue,
+                                    )
+                                )
+                        except Exception as e:
+                            logger.error(f"Failed to backfill report {r.id}: {e}")
+                    db.commit()
+                    logger.info("Database backfill completed successfully.")
+        except Exception as e:
+            logger.error(f"Schema backfill check failed: {e}")
+        finally:
+            db.close()
     except Exception as exc:
         logger.error(f"Auto-migration of schema failed: {exc}", exc_info=True)
 

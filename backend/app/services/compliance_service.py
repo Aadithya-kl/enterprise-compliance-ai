@@ -202,8 +202,23 @@ Required JSON format:
     "recommendations": [
         "Actionable recommendation 1",
         "Actionable recommendation 2"
+    ],
+    "structured_violations": [
+        {{
+            "violation_type": "Access Control",
+            "severity": "Critical",
+            "department": "IT",
+            "regulation_category": "Access Security",
+            "description": "Specific issue description 1"
+        }}
     ]
 }}
+
+Choose from these standard values for structured metadata:
+- severity: "Critical", "High", "Medium", "Low"
+- violation_type: E.g., "MFA", "Access Control", "Data Encryption", "Data Privacy", "Audit Logging", "Retention Policy", "Other"
+- department: E.g., "IT", "HR", "Finance", "Operations", "Legal", "General"
+- regulation_category: E.g., "Data Privacy", "Access Security", "Operational Risk"
 
 Regulation:
 {regulation_text}
@@ -234,6 +249,49 @@ Company Policy:
     parsed.setdefault("issues", [])
     parsed.setdefault("recommendations", [])
     parsed.setdefault("violation", len(parsed["issues"]) > 0)
+    parsed.setdefault("structured_violations", [])
+
+    # Heuristic fallback if structured_violations is missing
+    if not parsed.get("structured_violations") and parsed.get("issues"):
+        for issue in parsed["issues"]:
+            issue_lower = issue.lower()
+            
+            # Severity detection
+            severity = "Medium"
+            if any(kw in issue_lower for kw in ["critical", "mfa", "encryption", "credentials"]):
+                severity = "Critical"
+            elif any(kw in issue_lower for kw in ["high", "password", "access", "unauthorized"]):
+                severity = "High"
+            elif any(kw in issue_lower for kw in ["low", "minor", "version", "formatting"]):
+                severity = "Low"
+                
+            # Type detection
+            v_type = "Other"
+            if any(kw in issue_lower for kw in ["mfa", "auth", "login", "password", "privilege"]):
+                v_type = "Access Control"
+            elif any(kw in issue_lower for kw in ["encrypt", "aes", "ssl", "tls", "rest", "transit"]):
+                v_type = "Data Encryption"
+            elif any(kw in issue_lower for kw in ["audit", "log", "history", "record"]):
+                v_type = "Audit Logging"
+            elif any(kw in issue_lower for kw in ["privacy", "gdpr", "personal", "pii"]):
+                v_type = "Data Privacy"
+                
+            # Department detection
+            dept = "General"
+            if any(kw in issue_lower for kw in ["it", "system", "administrator", "network"]):
+                dept = "IT"
+            elif any(kw in issue_lower for kw in ["finance", "billing", "payment"]):
+                dept = "Finance"
+            elif any(kw in issue_lower for kw in ["hr", "employee", "staff"]):
+                dept = "HR"
+
+            parsed["structured_violations"].append({
+                "violation_type": v_type,
+                "severity": severity,
+                "department": dept,
+                "regulation_category": "Compliance Standards",
+                "description": issue
+            })
 
     # Enrich with computed fields
     parsed["risk"] = assess_risk(parsed["issues"])

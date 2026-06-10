@@ -9,8 +9,6 @@ export default function ComplianceReportsPage() {
   const queryClient = useQueryClient()
   const [quickReport, setQuickReport] = useState<ComplianceReportResponse | null>(null)
   const [workflowResult, setWorkflowResult] = useState<WorkflowRunResponse | null>(null)
-  const [trendResult, setTrendResult] = useState<any | null>(null)
-  const [trendQuery, setTrendQuery] = useState<string>('')
 
   const reportMutation = useMutation({
     mutationFn: complianceApi.generateReport,
@@ -30,16 +28,7 @@ export default function ComplianceReportsPage() {
     },
   })
 
-  const trendMutation = useMutation({
-    mutationFn: (query: string) => complianceApi.runTrendWorkflow(query),
-    onSuccess: (data) => {
-      setTrendResult(data)
-      queryClient.invalidateQueries({ queryKey: ['audit-history-recent'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
-    },
-  })
-
-  const error = reportMutation.error || workflowMutation.error || trendMutation.error
+  const error = reportMutation.error || workflowMutation.error
 
   return (
     <div className="max-w-3xl space-y-5">
@@ -51,7 +40,7 @@ export default function ComplianceReportsPage() {
       </div>
 
       {/* Action cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Quick Report */}
         <div className="card p-5 flex flex-col justify-between">
           <div>
@@ -63,7 +52,7 @@ export default function ComplianceReportsPage() {
             </p>
           </div>
           <button
-            onClick={() => { setWorkflowResult(null); setTrendResult(null); reportMutation.mutate() }}
+            onClick={() => { setWorkflowResult(null); reportMutation.mutate() }}
             disabled={reportMutation.isPending}
             className="btn-primary w-full"
           >
@@ -82,37 +71,11 @@ export default function ComplianceReportsPage() {
             </p>
           </div>
           <button
-            onClick={() => { setQuickReport(null); setTrendResult(null); workflowMutation.mutate() }}
+            onClick={() => { setQuickReport(null); workflowMutation.mutate() }}
             disabled={workflowMutation.isPending}
             className="btn-primary w-full bg-brand-700 hover:bg-brand-800"
           >
             {workflowMutation.isPending ? 'Running Workflow...' : 'Run Full Workflow'}
-          </button>
-        </div>
-
-        {/* Trend Analysis */}
-        <div className="card p-5 border-amber-200 dark:border-amber-800 bg-amber-50/10 dark:bg-amber-950/5 flex flex-col justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
-              Multi-Year Trend Analysis
-            </h2>
-            <p className="text-xs text-gray-500">
-              Analyses multi-year compliance trends, risk evolution, and progression.
-            </p>
-            <input
-              type="text"
-              placeholder="e.g. past 3 years, 2010 to 2015"
-              value={trendQuery}
-              onChange={(e) => setTrendQuery(e.target.value)}
-              className="w-full text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 my-3 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-          </div>
-          <button
-            onClick={() => { setQuickReport(null); setWorkflowResult(null); trendMutation.mutate(trendQuery) }}
-            disabled={trendMutation.isPending}
-            className="btn-primary w-full bg-amber-600 hover:bg-amber-700 border-none text-white"
-          >
-            {trendMutation.isPending ? 'Analyzing Trends...' : 'Run Trend Analysis'}
           </button>
         </div>
       </div>
@@ -173,65 +136,6 @@ export default function ComplianceReportsPage() {
         </div>
       )}
 
-      {/* Trend Result */}
-      {trendResult?.success && (
-        <div className="space-y-4">
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-              Multi-Year Trend Analysis: Executive Summary
-            </h3>
-            <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap font-sans">
-              {trendResult.executive_summary}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">
-                Compliance Maturity Progression
-              </h4>
-              <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap font-sans">
-                {trendResult.compliance_maturity_progression}
-              </p>
-            </div>
-            <div className="card p-5">
-              <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">
-                Risk Evolution Summary
-              </h4>
-              <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap font-sans">
-                {trendResult.risk_evolution_summary}
-              </p>
-            </div>
-          </div>
-
-          <div className="card p-5">
-            <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-3">
-              Detailed Annual & Five-Year Trends
-            </h4>
-            <div className="space-y-4">
-              {trendResult.annual_analysis && (
-                <div>
-                  <h5 className="text-xs font-medium text-gray-900 dark:text-white mb-1">Year-Over-Year (Annual) Changes</h5>
-                  <p className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-sans">{trendResult.annual_analysis}</p>
-                </div>
-              )}
-              {trendResult.five_year_analysis && (
-                <div>
-                  <h5 className="text-xs font-medium text-gray-900 dark:text-white mb-1">Five-Year Long-Term Analysis</h5>
-                  <p className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-sans">{trendResult.five_year_analysis}</p>
-                </div>
-              )}
-              {trendResult.quarterly_analysis && (
-                <div>
-                  <h5 className="text-xs font-medium text-gray-900 dark:text-white mb-1">Quarterly Compliance Posture</h5>
-                  <p className="text-xs text-gray-500 leading-relaxed whitespace-pre-wrap font-sans">{trendResult.quarterly_analysis}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

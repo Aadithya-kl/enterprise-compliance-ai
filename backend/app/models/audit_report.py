@@ -6,6 +6,7 @@ PostgreSQL compatibility without requiring the JSONB extension.
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base
 
@@ -14,6 +15,8 @@ class AuditReport(Base):
     """Persisted compliance audit report produced by the AI pipeline."""
 
     __tablename__ = "audit_reports"
+
+    violations = relationship("ComplianceViolation", back_populates="report", cascade="all, delete-orphan")
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
 

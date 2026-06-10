@@ -41,6 +41,32 @@ class CRUDAuditReport(CRUDBase[AuditReport]):
             auditor=report.get("auditor", "Compliance AI Auditor"),
             created_by_user_id=user_id,
         )
+
+        # Map and attach structured violations
+        from app.models.compliance_violation import ComplianceViolation
+        from datetime import datetime
+        
+        try:
+            report_dt = datetime.strptime(report.get("audit_timestamp", ""), "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            report_dt = datetime.now()
+
+        structured_violations = report.get("structured_violations", [])
+        violation_records = []
+        for v in structured_violations:
+            violation_records.append(
+                ComplianceViolation(
+                    violation_type=v.get("violation_type", "Other"),
+                    severity=v.get("severity", "Medium"),
+                    department=v.get("department", "General"),
+                    compliance_score=int(report.get("compliance_score", 0)),
+                    regulation_category=v.get("regulation_category", "General"),
+                    report_date=report_dt,
+                    description=v.get("description", ""),
+                )
+            )
+        record.violations = violation_records
+
         return self.create(db, obj=record)
 
     def get_ordered(

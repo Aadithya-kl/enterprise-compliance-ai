@@ -15,6 +15,7 @@ import AuditHistoryPage from './pages/AuditHistory'
 import RiskAnalyticsPage from './pages/RiskAnalytics'
 import UserManagementPage from './pages/UserManagement'
 import SettingsPage from './pages/Settings'
+import TrendDashboardPage from './pages/TrendDashboard'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,6 +56,7 @@ export default function App() {
                 }
               >
                 <Route index element={<DashboardPage />} />
+                <Route path="trends" element={<TrendDashboardPage />} />
                 <Route
                   path="documents/upload"
                   element={
