@@ -1,9 +1,14 @@
 import client from './client'
-import type { LoginRequest, TokenResponse, User } from '../types/auth'
+import type { LoginRequest, RegisterRequest, TokenResponse, User } from '../types/auth'
 
 export const authApi = {
   login: async (data: LoginRequest): Promise<TokenResponse> => {
     const res = await client.post<TokenResponse>('/auth/login', data)
+    return res.data
+  },
+
+  register: async (data: RegisterRequest): Promise<User> => {
+    const res = await client.post<User>('/auth/register', data)
     return res.data
   },
 
@@ -17,3 +22,4 @@ export const authApi = {
     return res.data
   },
 }
+

@@ -25,13 +25,6 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     role: str = Field(default="auditor")
 
-    @field_validator("email")
-    @classmethod
-    def validate_email_domain(cls, v: EmailStr) -> EmailStr:
-        if not v.endswith("@company.com"):
-            raise ValueError("Only company emails are allowed")
-        return v
-
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str) -> str:

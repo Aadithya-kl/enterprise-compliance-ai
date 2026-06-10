@@ -25,8 +25,13 @@ if settings.DATABASE_URL.startswith("sqlite"):
         echo=settings.DEBUG,  # Log SQL only in DEBUG mode
     )
 else:
+    sslmode = (
+        "prefer"
+        if "localhost" in settings.DATABASE_URL or "127.0.0.1" in settings.DATABASE_URL
+        else "require"
+    )
     _connect_args = {
-        "sslmode": "require",
+        "sslmode": sslmode,
         "connect_timeout": settings.DB_CONNECT_TIMEOUT,
     }
     engine = create_engine(

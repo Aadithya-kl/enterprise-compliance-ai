@@ -6,6 +6,7 @@ import { AppLayout } from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import LoginPage from './pages/Login'
+import RegisterPage from './pages/Register'
 import DashboardPage from './pages/Dashboard'
 import UploadPage from './pages/Upload'
 import AskQuestionPage from './pages/AskQuestion'
@@ -44,6 +45,7 @@ export default function App() {
           <ErrorBoundary>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
 
               <Route
                 element={

@@ -35,16 +35,14 @@ logger = get_logger(__name__)
     "/register",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Register a new user (admin only)",
+    summary="Register a new user",
 )
 def register(
     payload: RegisterRequest,
     db: Session = Depends(get_db),
-    _admin: User = Depends(get_admin),
 ):
     """
     Create a new platform user.
-    Only administrators may register new accounts.
     """
     existing = crud_user.get_by_email(db, payload.email)
     if existing:
