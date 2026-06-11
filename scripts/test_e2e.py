@@ -97,15 +97,13 @@ def run_tests(client):
     else:
         print(f"[FAIL] Ask failed: {res.text}")
 
-    print("\n6. Trend Workflow")
-    res = client.post("/api/v1/workflow/trend", headers=headers, json={"query": "Compare 2020 and 2024 annual reports"})
+    print("\n6. Trend Workflow / AI Router")
+    res = client.post("/api/v1/analytics/query", headers=headers, json={"query": "Compare 2020 and 2024 annual reports"})
     if res.status_code == 200:
         data = res.json()
         if data.get("success"):
             print("[OK] Trend Workflow successful")
-            print(f"  - Quarterly: {bool(data.get('quarterly_analysis'))}")
-            print(f"  - Annual: {bool(data.get('annual_analysis'))}")
-            print(f"  - 5-Year: {bool(data.get('five_year_analysis'))}")
+            print(f"  - Route taken: {data.get('route')}")
         else:
             print(f"[FAIL] Trend Workflow failed: {data.get('error')}")
     else:

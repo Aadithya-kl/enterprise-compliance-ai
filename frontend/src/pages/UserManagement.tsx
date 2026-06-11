@@ -143,7 +143,7 @@ function UserManagementContent() {
       )}
 
       {/* User table */}
-      <div className="table-container">
+      <div className="table-container overflow-x-auto">
         <table className="table">
           <thead>
             <tr>

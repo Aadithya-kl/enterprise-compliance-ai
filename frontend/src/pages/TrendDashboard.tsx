@@ -108,7 +108,7 @@ export default function TrendDashboardPage() {
           </p>
         </div>
 
-        <form onSubmit={handleQuerySubmit} className="flex gap-2">
+        <form onSubmit={handleQuerySubmit} className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={query}
@@ -128,17 +128,17 @@ export default function TrendDashboardPage() {
         {/* Stepper routing tracker */}
         {routingStep > 0 && (
           <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-3">
-            <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-gray-500 font-medium gap-3 sm:gap-2">
               <div className="flex items-center gap-2">
                 <span className={`h-4 w-4 rounded-full flex items-center justify-center text-[10px] ${routingStep >= 1 ? 'bg-brand-600 text-white animate-pulse' : 'bg-gray-200'}`}>1</span>
                 <span>Classifying Intent</span>
               </div>
-              <div className="w-12 h-0.5 bg-gray-200 dark:bg-gray-800"></div>
+              <div className="hidden sm:block flex-1 h-0.5 bg-gray-200 dark:bg-gray-800"></div>
               <div className="flex items-center gap-2">
                 <span className={`h-4 w-4 rounded-full flex items-center justify-center text-[10px] ${routingStep >= 2 ? 'bg-brand-600 text-white' : 'bg-gray-200'}`}>2</span>
                 <span>Executing Node</span>
               </div>
-              <div className="w-12 h-0.5 bg-gray-200 dark:bg-gray-800"></div>
+              <div className="hidden sm:block flex-1 h-0.5 bg-gray-200 dark:bg-gray-800"></div>
               <div className="flex items-center gap-2">
                 <span className={`h-4 w-4 rounded-full flex items-center justify-center text-[10px] ${routingStep >= 3 ? 'bg-brand-600 text-white' : 'bg-gray-200'}`}>3</span>
                 <span>Response Resolved</span>
@@ -176,11 +176,11 @@ export default function TrendDashboardPage() {
           <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
             Compliance Score Over Time
           </h3>
-          <div className="h-64">
+          <div className="h-[300px]">
             {data?.compliance_score_trend?.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-gray-400">No trend data. Generate compliance reports.</div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={data.compliance_score_trend} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scoreColor" x1="0" y1="0" x2="0" y2="1">
@@ -204,11 +204,11 @@ export default function TrendDashboardPage() {
           <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
             Risk Severity Distribution Trend
           </h3>
-          <div className="h-64">
+          <div className="h-[300px]">
             {data?.risk_distribution_trend?.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-gray-400">No risk trend data.</div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={data.risk_distribution_trend} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.1}/>
                   <XAxis dataKey="period" stroke="#9ca3af" fontSize={10} tickLine={false}/>
@@ -230,11 +230,11 @@ export default function TrendDashboardPage() {
           <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
             Violation Volume by Category
           </h3>
-          <div className="h-64">
+          <div className="h-[300px]">
             {data?.violation_frequency?.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-gray-400">No category statistics.</div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={data.violation_frequency} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.1}/>
                   <XAxis dataKey="type" stroke="#9ca3af" fontSize={10} tickLine={false}/>

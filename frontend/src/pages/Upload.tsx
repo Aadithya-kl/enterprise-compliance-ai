@@ -107,7 +107,7 @@ export default function UploadPage() {
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Document Type
         </label>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           {DOCUMENT_TYPES.map((dt) => (
             <button
               key={dt.value}
@@ -188,7 +188,7 @@ export default function UploadPage() {
           </p>
 
           {/* Core ingestion metrics */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <div>
               <span className="text-gray-500">Filename</span>
               <p className="font-medium text-gray-900 dark:text-white truncate">{result.filename}</p>

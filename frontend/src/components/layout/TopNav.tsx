@@ -12,7 +12,11 @@ const PAGE_TITLES: Record<string, string> = {
   '/settings':        'Settings',
 }
 
-export function TopNav() {
+interface TopNavProps {
+  onToggleSidebar: () => void
+}
+
+export function TopNav({ onToggleSidebar }: TopNavProps) {
   const { pathname } = useLocation()
   const title = PAGE_TITLES[pathname] ?? 'Compliance AI'
 
@@ -34,10 +38,22 @@ export function TopNav() {
   }
 
   return (
-    <header className="fixed top-0 right-0 left-sidebar h-16 z-10 flex items-center justify-between px-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-      <h1 className="text-base font-semibold text-gray-900 dark:text-white">
-        {title}
-      </h1>
+    <header className="fixed top-0 right-0 left-0 lg:left-sidebar h-16 z-10 flex items-center justify-between px-4 lg:px-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 transition-all duration-300">
+      <div className="flex items-center gap-3">
+        {/* Hamburger Menu Toggle */}
+        <button
+          onClick={onToggleSidebar}
+          className="p-1.5 rounded-md lg:hidden text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none"
+          aria-label="Open sidebar"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <h1 className="text-sm md:text-base font-semibold text-gray-900 dark:text-white truncate">
+          {title}
+        </h1>
+      </div>
 
       <div className="flex items-center gap-3">
         {/* Dark mode toggle */}

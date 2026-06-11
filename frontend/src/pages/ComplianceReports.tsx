@@ -102,7 +102,7 @@ export default function ComplianceReportsPage() {
       {/* Workflow Result */}
       {workflowResult?.success && (
         <div className="space-y-4">
-          <div className="card p-5 grid grid-cols-3 gap-4">
+          <div className="card p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-gray-500">Risk Level</p>
               <span className={`mt-1 ${riskBadgeClass(workflowResult.risk_level ?? '')}`}>
