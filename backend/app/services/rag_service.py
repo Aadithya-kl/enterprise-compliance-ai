@@ -12,6 +12,9 @@ from pypdf import PdfReader
 
 from app.core.config import settings
 from app.core.logging import get_logger
+import hashlib
+import csv
+import json as json_lib
 
 logger = get_logger(__name__)
 
@@ -148,6 +151,195 @@ def extract_text_from_docx(docx_path: str) -> str:
         raise exc
 
 
+def extract_text_from_txt(file_path: str) -> str:
+    """Extract text from a plain text file (TXT, RTF)."""
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        logger.debug(f"Extracted {len(text)} characters from TXT {file_path}")
+        return text
+    except Exception as exc:
+        logger.error(f"Text file extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_xlsx(file_path: str) -> str:
+    """Extract text from XLSX/XLS spreadsheet files using openpyxl."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+        all_text = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            all_text.append(f"### Sheet: {sheet_name}")
+            rows = []
+            for row in ws.iter_rows(values_only=True):
+                row_text = [str(cell) if cell is not None else "" for cell in row]
+                if any(cell.strip() for cell in row_text):
+                    rows.append(" | ".join(row_text))
+            all_text.extend(rows)
+        wb.close()
+        text = "\n".join(all_text)
+        logger.debug(f"Extracted {len(text)} characters from XLSX {file_path}")
+        return text
+    except ImportError:
+        logger.error("openpyxl not installed. Install with: pip install openpyxl")
+        raise ValueError("openpyxl library required for XLSX extraction. Install with: pip install openpyxl")
+    except Exception as exc:
+        logger.error(f"XLSX extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_csv(file_path: str) -> str:
+    """Extract text from a CSV file."""
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            reader = csv.reader(f)
+            rows = []
+            for row in reader:
+                if any(cell.strip() for cell in row):
+                    rows.append(" | ".join(row))
+        text = "\n".join(rows)
+        logger.debug(f"Extracted {len(text)} characters from CSV {file_path}")
+        return text
+    except Exception as exc:
+        logger.error(f"CSV extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_pptx(file_path: str) -> str:
+    """Extract text from PPTX presentation files using python-pptx."""
+    try:
+        from pptx import Presentation
+        prs = Presentation(file_path)
+        all_text = []
+        for slide_num, slide in enumerate(prs.slides, 1):
+            slide_text = [f"### Slide {slide_num}"]
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        para_text = paragraph.text.strip()
+                        if para_text:
+                            slide_text.append(para_text)
+                if shape.has_table:
+                    table = shape.table
+                    for row in table.rows:
+                        row_cells = [cell.text.strip() for cell in row.cells]
+                        if any(row_cells):
+                            slide_text.append(" | ".join(row_cells))
+            all_text.extend(slide_text)
+        text = "\n".join(all_text)
+        logger.debug(f"Extracted {len(text)} characters from PPTX {file_path}")
+        return text
+    except ImportError:
+        logger.error("python-pptx not installed. Install with: pip install python-pptx")
+        raise ValueError("python-pptx library required for PPTX extraction. Install with: pip install python-pptx")
+    except Exception as exc:
+        logger.error(f"PPTX extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_json(file_path: str) -> str:
+    """Extract text from a JSON file by flattening to readable text."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json_lib.load(f)
+        text = json_lib.dumps(data, indent=2, ensure_ascii=False)
+        logger.debug(f"Extracted {len(text)} characters from JSON {file_path}")
+        return text
+    except Exception as exc:
+        logger.error(f"JSON extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_xml(file_path: str) -> str:
+    """Extract text content from an XML file."""
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        texts = []
+        for elem in root.iter():
+            if elem.text and elem.text.strip():
+                texts.append(elem.text.strip())
+            if elem.tail and elem.tail.strip():
+                texts.append(elem.tail.strip())
+        text = "\n".join(texts)
+        logger.debug(f"Extracted {len(text)} characters from XML {file_path}")
+        return text
+    except Exception as exc:
+        logger.error(f"XML extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_yaml(file_path: str) -> str:
+    """Extract text from a YAML file."""
+    try:
+        import yaml
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        text = yaml.dump(data, default_flow_style=False, allow_unicode=True)
+        logger.debug(f"Extracted {len(text)} characters from YAML {file_path}")
+        return text
+    except Exception as exc:
+        logger.error(f"YAML extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text_from_image(file_path: str) -> str:
+    """Extract text from an image file using OCR (pytesseract + Pillow)."""
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(file_path)
+        text = pytesseract.image_to_string(img)
+        logger.debug(f"OCR extracted {len(text)} characters from image {file_path}")
+        if not text.strip():
+            logger.warning(f"OCR produced no text from {file_path}")
+        return text
+    except ImportError as ie:
+        logger.warning(f"OCR libraries not available: {ie}. Cannot extract text from images.")
+        raise ValueError(
+            "OCR requires pytesseract and Pillow. Install with: pip install pytesseract Pillow. "
+            "Also ensure the Tesseract CLI is installed on your system."
+        )
+    except Exception as exc:
+        logger.error(f"Image OCR extraction failed: {exc}", exc_info=True)
+        raise exc
+
+
+def extract_text(file_path: str) -> str:
+    """Dispatch to the appropriate text extractor based on file extension."""
+    ext = os.path.splitext(file_path)[1].lower()
+    extractors = {
+        ".pdf": extract_text_from_pdf,
+        ".docx": extract_text_from_docx,
+        ".doc": extract_text_from_docx,  # best-effort; may fail for legacy .doc
+        ".txt": extract_text_from_txt,
+        ".rtf": extract_text_from_txt,  # basic RTF handled as text
+        ".odt": extract_text_from_txt,  # best-effort
+        ".xlsx": extract_text_from_xlsx,
+        ".xls": extract_text_from_xlsx,  # best-effort via openpyxl
+        ".csv": extract_text_from_csv,
+        ".pptx": extract_text_from_pptx,
+        ".ppt": extract_text_from_pptx,  # best-effort; may fail for legacy .ppt
+        ".json": extract_text_from_json,
+        ".xml": extract_text_from_xml,
+        ".yaml": extract_text_from_yaml,
+        ".yml": extract_text_from_yaml,
+        ".png": extract_text_from_image,
+        ".jpg": extract_text_from_image,
+        ".jpeg": extract_text_from_image,
+        ".tiff": extract_text_from_image,
+        ".tif": extract_text_from_image,
+    }
+    extractor = extractors.get(ext)
+    if not extractor:
+        raise ValueError(f"Unsupported file format: '{ext}'. Supported: {', '.join(sorted(extractors.keys()))}")
+    logger.info(f"Extracting text from '{file_path}' using {extractor.__name__}")
+    return extractor(file_path)
+
+
 # ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
@@ -222,6 +414,92 @@ def store_document_chunks(
 
 
 # ---------------------------------------------------------------------------
+# File Hashing & Duplicate Detection
+# ---------------------------------------------------------------------------
+
+def compute_file_hash(file_path: str) -> str:
+    """Compute SHA256 hash of a file for duplicate detection."""
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for block in iter(lambda: f.read(8192), b""):
+            sha256.update(block)
+    return sha256.hexdigest()
+
+
+def check_duplicate(file_hash: str) -> dict:
+    """Check if a file with the same hash already exists in ChromaDB."""
+    try:
+        all_meta = _collection.get(include=["metadatas"]).get("metadatas") or []
+        for meta in all_meta:
+            if meta and meta.get("file_hash") == file_hash:
+                return {
+                    "is_duplicate": True,
+                    "existing_filename": meta.get("filename", "unknown"),
+                }
+    except Exception as exc:
+        logger.error(f"Duplicate check error: {exc}", exc_info=True)
+    return {"is_duplicate": False}
+
+
+def check_version_conflict(filename: str, file_hash: str) -> dict:
+    """Check if a file with the same name but different hash exists."""
+    try:
+        results = _collection.get(
+            where={"filename": filename},
+            include=["metadatas"],
+        )
+        existing_metas = results.get("metadatas") or []
+        for meta in existing_metas:
+            if meta and meta.get("file_hash") and meta.get("file_hash") != file_hash:
+                return {
+                    "is_version_conflict": True,
+                    "existing_filename": meta.get("filename"),
+                    "existing_hash": meta.get("file_hash"),
+                }
+    except Exception as exc:
+        logger.error(f"Version conflict check error: {exc}", exc_info=True)
+    return {"is_version_conflict": False}
+
+
+# ---------------------------------------------------------------------------
+# Indexed File Listing
+# ---------------------------------------------------------------------------
+
+def get_indexed_files() -> list[dict]:
+    """Return a list of all unique filenames currently indexed in ChromaDB."""
+    try:
+        all_meta = _collection.get(include=["metadatas"]).get("metadatas") or []
+        files_map: dict[str, dict] = {}
+        for meta in all_meta:
+            if not meta:
+                continue
+            fname = meta.get("filename")
+            if fname and fname not in files_map:
+                files_map[fname] = {
+                    "filename": fname,
+                    "document_type": meta.get("document_type", "unknown"),
+                    "source": meta.get("source", "unknown"),
+                }
+            elif fname and fname in files_map:
+                # Just increment a count we can use
+                pass
+        # Add chunk counts
+        for fname in files_map:
+            try:
+                count_results = _collection.get(
+                    where={"filename": fname},
+                    include=[],
+                )
+                files_map[fname]["chunk_count"] = len(count_results.get("ids", []))
+            except Exception:
+                files_map[fname]["chunk_count"] = 0
+        return list(files_map.values())
+    except Exception as exc:
+        logger.error(f"Get indexed files error: {exc}", exc_info=True)
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Retrieval
 # ---------------------------------------------------------------------------
 
@@ -264,7 +542,7 @@ def extract_filenames_from_query(query: str, metadatas: list[dict]) -> list[str]
                 
     return list(matched)
 
-def retrieve_chunks(query: str, n_results: int = 10) -> dict:
+def retrieve_chunks(query: str, n_results: int = 10, selected_files: list[str] | None = None) -> dict:
     """
     Retrieve the most relevant chunks for a query.
     Clamps n_results to the collection size to prevent ChromaDB errors.
@@ -277,6 +555,11 @@ def retrieve_chunks(query: str, n_results: int = 10) -> dict:
         # Auto-detect filenames for metadata filtering
         all_meta = _collection.get(include=["metadatas"]).get("metadatas") or []
         target_fnames = extract_filenames_from_query(query, all_meta)
+
+        # Explicit file selection takes priority over auto-detection
+        if selected_files:
+            target_fnames = selected_files
+            logger.info(f"Using explicit file selection: {selected_files}")
         
         comparison_mode = False
         if len(target_fnames) > 1:
@@ -372,16 +655,33 @@ def retrieve_chunks(query: str, n_results: int = 10) -> dict:
         return {"documents": [], "metadata": [], "distances": [], "matched_filenames": [], "retrieved_chunks_per_filename": {}, "total_chunks_retrieved": 0, "where_clause": None, "retrieval_mode": "standard_qa"}
 
 
-def get_chunks_by_type(document_type: str) -> list[str]:
-    """Return all stored chunks of a given document type."""
+def get_chunks_with_metadata_by_type(document_type: str, selected_files: list[str] | None = None) -> dict:
+    """Return stored chunks and metadatas of a given document type."""
     try:
-        results = _collection.get(where={"document_type": document_type})
-        docs = results.get("documents") or []
-        logger.debug(f"Retrieved {len(docs)} chunks for type={document_type}")
-        return docs
+        if selected_files:
+            where = {
+                "$and": [
+                    {"document_type": {"$eq": document_type}},
+                    {"filename": {"$in": selected_files}}
+                ]
+            }
+        else:
+            where = {"document_type": document_type}
+        results = _collection.get(where=where, include=["documents", "metadatas"])
+        return {
+            "documents": results.get("documents") or [],
+            "metadatas": results.get("metadatas") or []
+        }
     except Exception as exc:
         logger.error(f"ChromaDB get_by_type error: {exc}", exc_info=True)
-        return []
+        return {"documents": [], "metadatas": []}
+
+
+def get_chunks_by_type(document_type: str, selected_files: list[str] | None = None) -> list[str]:
+    """Return all stored chunks of a given document type."""
+    res = get_chunks_with_metadata_by_type(document_type, selected_files)
+    return res["documents"]
+
 
 
 # ---------------------------------------------------------------------------

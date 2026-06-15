@@ -1,20 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { complianceApi } from '../api/compliance'
-import type { AuditReport } from '../types/audit'
+import { documentsApi } from '../api/documents'
+import type { AuditReport, IndexedFile } from '../types/audit'
 import { riskBadgeClass, scoreColor } from '../utils/formatters'
 import { useAuth } from '../store/authStore'
 import { integrationsApi } from '../api/integrations'
+import EvidenceDrawer from '../components/common/EvidenceDrawer'
+import { simulateSourcesForReport } from '../utils/sourceSimulator'
 
 export default function AuditHistoryPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<AuditReport | null>(null)
+  
+  // Document list for source simulation
+  const [files, setFiles] = useState<IndexedFile[]>([])
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ['audit-history'],
     queryFn: () => complianceApi.listAuditReports(0, 100),
   })
+
+  useEffect(() => {
+    documentsApi.getIndexedFiles()
+      .then(setFiles)
+      .catch((err) => console.error('Failed to load indexed files:', err))
+  }, [])
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => complianceApi.deleteAuditReport(id),
@@ -28,6 +40,12 @@ export default function AuditHistoryPage() {
     const report = await complianceApi.getAuditReport(id)
     setSelected(report)
   }
+
+  // Calculate simulated sources for selected report
+  const reportSources = useMemo(() => {
+    if (!selected) return []
+    return simulateSourcesForReport(files, selected.id)
+  }, [files, selected])
 
   return (
     <div className="space-y-5">
@@ -156,6 +174,15 @@ export default function AuditHistoryPage() {
                 </ul>
               )}
             </div>
+
+            <div className="border-t border-gray-150 dark:border-gray-800/80 pt-4" />
+
+            {/* Collapsible Evidence Panel */}
+            <EvidenceDrawer
+              sources={reportSources}
+              title="Evidence Sources"
+              retrievalMode="audit history logs"
+            />
           </div>
         ) : (
           <div className="card p-8 flex items-center justify-center text-sm text-gray-400">

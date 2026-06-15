@@ -93,7 +93,13 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
-    ALLOWED_EXTENSIONS: list[str] = [".pdf"]
+    ALLOWED_EXTENSIONS: list[str] = [
+        ".pdf", ".docx", ".doc", ".txt", ".rtf", ".odt",
+        ".xlsx", ".xls", ".csv",
+        ".pptx", ".ppt",
+        ".json", ".xml", ".yaml", ".yml",
+        ".png", ".jpg", ".jpeg", ".tiff", ".tif",
+    ]
 
     # -----------------------------------------------------------------------
     # Logging

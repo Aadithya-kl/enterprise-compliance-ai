@@ -26,7 +26,9 @@ from app.services.compliance_service import (
     calculate_compliance_score,
     generate_compliance_report,
 )
-from app.services.rag_service import get_chunks_by_type
+from app.services.rag_service import get_chunks_by_type, get_chunks_with_metadata_by_type
+from app.schemas.document import ComplianceReportRequest
+from typing import Optional
 
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
 logger = get_logger(__name__)
@@ -39,6 +41,7 @@ logger = get_logger(__name__)
     summary="Generate a compliance report and persist to database",
 )
 def create_compliance_report(
+    payload: Optional[ComplianceReportRequest] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -48,8 +51,12 @@ def create_compliance_report(
     2. Call the LLM to produce a structured JSON report
     3. Persist to Supabase and return the saved record
     """
-    policy_chunks = get_chunks_by_type("policy")
-    regulation_chunks = get_chunks_by_type("regulation")
+    selected_files = payload.selected_files if payload else None
+    policy_res = get_chunks_with_metadata_by_type("policy", selected_files=selected_files)
+    regulation_res = get_chunks_with_metadata_by_type("regulation", selected_files=selected_files)
+
+    policy_chunks = policy_res["documents"]
+    regulation_chunks = regulation_res["documents"]
 
     if not policy_chunks:
         raise HTTPException(
@@ -89,6 +96,34 @@ def create_compliance_report(
 
     import json
 
+    # Calculate actual retrieval metadata
+    retrieved_chunk_count = len(policy_chunks) + len(regulation_chunks)
+
+    filenames = set()
+    for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
+        if meta and meta.get("filename"):
+            filenames.add(meta.get("filename"))
+    files_used = list(filenames)
+
+    retrieval_mode = "Filtered" if selected_files else "Global"
+
+    sources_dict = {}
+    for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
+        if not meta or not meta.get("filename"):
+            continue
+        fname = meta.get("filename")
+        if fname not in sources_dict:
+            sources_dict[fname] = {
+                "filename": fname,
+                "document_type": meta.get("document_type", "unknown"),
+                "chunks_used": 0,
+                "sections": [],
+                "confidence": 100,
+                "drive_web_view_link": meta.get("drive_web_view_link")
+            }
+        sources_dict[fname]["chunks_used"] += 1
+    sources = list(sources_dict.values())
+
     return ComplianceReportResponse(
         violation=report.get("violation", False),
         issues=(
@@ -107,6 +142,10 @@ def create_compliance_report(
         audit_timestamp=saved.audit_timestamp,
         auditor=saved.auditor,
         id=saved.id,
+        sources=sources,
+        retrieved_chunk_count=retrieved_chunk_count,
+        files_used=files_used,
+        retrieval_mode=retrieval_mode
     )
 
 
@@ -116,14 +155,16 @@ def create_compliance_report(
     summary="Perform a risk assessment without persisting",
 )
 def assess_compliance_risk(
+    payload: Optional[ComplianceReportRequest] = None,
     current_user: User = Depends(get_current_user),
 ):
     """
     Run the compliance pipeline and return a risk assessment.
     No database write occurs.
     """
-    policy_chunks = get_chunks_by_type("policy")
-    regulation_chunks = get_chunks_by_type("regulation")
+    selected_files = payload.selected_files if payload else None
+    policy_chunks = get_chunks_by_type("policy", selected_files=selected_files)
+    regulation_chunks = get_chunks_by_type("regulation", selected_files=selected_files)
 
     if not policy_chunks or not regulation_chunks:
         raise HTTPException(

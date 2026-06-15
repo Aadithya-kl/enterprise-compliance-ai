@@ -12,13 +12,17 @@ import type {
 
 export const complianceApi = {
   // Compliance
-  generateReport: async (): Promise<ComplianceReportResponse> => {
-    const res = await client.post<ComplianceReportResponse>('/compliance/report')
+  generateReport: async (selectedFiles?: string[]): Promise<ComplianceReportResponse> => {
+    const res = await client.post<ComplianceReportResponse>('/compliance/report', {
+      selected_files: selectedFiles,
+    })
     return res.data
   },
 
-  assessRisk: async (): Promise<RiskAssessmentResponse> => {
-    const res = await client.post<RiskAssessmentResponse>('/compliance/risk')
+  assessRisk: async (selectedFiles?: string[]): Promise<RiskAssessmentResponse> => {
+    const res = await client.post<RiskAssessmentResponse>('/compliance/risk', {
+      selected_files: selectedFiles,
+    })
     return res.data
   },
 
@@ -60,11 +64,13 @@ export const complianceApi = {
   // Workflow
   runWorkflow: async (
     policy_type = 'policy',
-    regulation_type = 'regulation'
+    regulation_type = 'regulation',
+    selectedFiles?: string[]
   ): Promise<WorkflowRunResponse> => {
     const res = await workflowClient.post<WorkflowRunResponse>('/workflow/run', {
       policy_type,
       regulation_type,
+      selected_files: selectedFiles,
     })
     return res.data
   },

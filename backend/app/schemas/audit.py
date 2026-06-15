@@ -77,3 +77,8 @@ class ComplianceReportResponse(BaseModel):
     audit_timestamp: str
     auditor: str
     id: Optional[int] = None
+    sources: Optional[List[dict]] = None
+    retrieved_chunk_count: Optional[int] = None
+    files_used: Optional[List[str]] = None
+    retrieval_mode: Optional[str] = None
+

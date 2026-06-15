@@ -27,7 +27,7 @@ from app.agents.report_agent import ReportAgent
 from app.agents.risk_agent import RiskAgent
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.services.rag_service import get_chunks_by_type
+from app.services.rag_service import get_chunks_by_type, get_chunks_with_metadata_by_type
 
 logger = get_logger(__name__)
 
@@ -42,11 +42,16 @@ class WorkflowState(TypedDict, total=False):
     # Input
     policy_type: str
     regulation_type: str
+    selected_files: Optional[list[str]]
     triggered_by_user_id: Optional[int]
 
     # Populated by retrieve_documents
     policy_chunks: list[str]
     regulation_chunks: list[str]
+    sources: list[dict]
+    retrieved_chunk_count: int
+    files_used: list[str]
+    retrieval_mode: str
 
     # Populated by compliance agent
     compliance_analysis: dict
@@ -85,9 +90,13 @@ def retrieve_documents(state: WorkflowState) -> WorkflowState:
     try:
         policy_type = state.get("policy_type", "policy")
         regulation_type = state.get("regulation_type", "regulation")
+        selected_files = state.get("selected_files")
 
-        policy_chunks = get_chunks_by_type(policy_type)
-        regulation_chunks = get_chunks_by_type(regulation_type)
+        policy_res = get_chunks_with_metadata_by_type(policy_type, selected_files=selected_files)
+        regulation_res = get_chunks_with_metadata_by_type(regulation_type, selected_files=selected_files)
+
+        policy_chunks = policy_res["documents"]
+        regulation_chunks = regulation_res["documents"]
 
         logger.info(
             f"[retrieve_documents] EXIT in {time.monotonic()-t:.2f}s — "
@@ -99,7 +108,43 @@ def retrieve_documents(state: WorkflowState) -> WorkflowState:
         if not regulation_chunks:
             return {**state, "error": f"No documents of type '{regulation_type}' found in ChromaDB. Upload a PDF first."}
 
-        return {**state, "policy_chunks": policy_chunks, "regulation_chunks": regulation_chunks}
+        # Calculate actual retrieval metadata
+        retrieved_chunk_count = len(policy_chunks) + len(regulation_chunks)
+
+        filenames = set()
+        for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
+            if meta and meta.get("filename"):
+                filenames.add(meta.get("filename"))
+        files_used = list(filenames)
+
+        retrieval_mode = "Filtered" if selected_files else "Global"
+
+        sources_dict = {}
+        for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
+            if not meta or not meta.get("filename"):
+                continue
+            fname = meta.get("filename")
+            if fname not in sources_dict:
+                sources_dict[fname] = {
+                    "filename": fname,
+                    "document_type": meta.get("document_type", "unknown"),
+                    "chunks_used": 0,
+                    "sections": [],
+                    "confidence": 100,
+                    "drive_web_view_link": meta.get("drive_web_view_link")
+                }
+            sources_dict[fname]["chunks_used"] += 1
+        sources = list(sources_dict.values())
+
+        return {
+            **state,
+            "policy_chunks": policy_chunks,
+            "regulation_chunks": regulation_chunks,
+            "sources": sources,
+            "retrieved_chunk_count": retrieved_chunk_count,
+            "files_used": files_used,
+            "retrieval_mode": retrieval_mode
+        }
 
     except Exception as exc:
         logger.error(f"[retrieve_documents] EXCEPTION: {exc}", exc_info=True)
@@ -288,6 +333,7 @@ except ImportError:
 def run_compliance_workflow(
     policy_type: str = "policy",
     regulation_type: str = "regulation",
+    selected_files: Optional[list[str]] = None,
     user_id: Optional[int] = None,
     db=None,
 ) -> WorkflowState:
@@ -308,13 +354,14 @@ def run_compliance_workflow(
     initial_state: WorkflowState = {
         "policy_type": policy_type,
         "regulation_type": regulation_type,
+        "selected_files": selected_files,
         "triggered_by_user_id": user_id,
     }
 
     t_total = time.monotonic()
     logger.info(
         f"[workflow] START — policy_type={policy_type} regulation_type={regulation_type} "
-        f"user_id={user_id} timeout={timeout}s"
+        f"selected_files={selected_files} user_id={user_id} timeout={timeout}s"
     )
 
     state: WorkflowState = initial_state

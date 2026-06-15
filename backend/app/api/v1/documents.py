@@ -1,24 +1,24 @@
-"""
-Document management router.
+"""Document management router.
 
 Endpoints:
-  POST /api/v1/documents/upload       — upload, ingest, and push to Google Drive
-  GET  /api/v1/documents/{type}/count — count ChromaDB chunks by type
-  POST /api/v1/documents/ask          — RAG question answering
-  POST /api/v1/documents/analyze      — narrative compliance gap analysis
+  POST /api/v1/documents/upload        — upload, ingest, and push to Google Drive
+  GET  /api/v1/documents/{type}/count  — count ChromaDB chunks by type
+  POST /api/v1/documents/ask           — RAG question answering
+  POST /api/v1/documents/analyze       — narrative compliance gap analysis
+  GET  /api/v1/documents/indexed-files — list all indexed filenames
 
 Upload pipeline (in order):
-  1. Validate: PDF extension + max file size.
+  1. Validate: extension + max file size + duplicate check.
   2. Save:     Write bytes to local ./uploads/ directory.
   3. Drive:    If configured, upload to Google Drive folder.
                - Deduplication: if a file with the same name exists in the folder,
                  reuse its metadata (drive_upload_status="duplicate").
                - Non-blocking: Drive failure does not abort the request.
                - drive_upload_status: "uploaded" | "duplicate" | "skipped" | "failed"
-  4. Extract:  Parse PDF text via pypdf.
+  4. Extract:  Parse text via format-appropriate extractor (PDF, DOCX, XLSX, etc.).
   5. Chunk:    Split text into overlapping windows.
   6. Ingest:   Store chunks in ChromaDB with full provenance metadata:
-               - filename, document_type, source ("google_drive" or "local_upload")
+               - filename, document_type, source, file_hash
                - drive_file_id, drive_file_name, drive_web_view_link (when available)
   7. Respond:  Return UploadResponse including all Drive metadata fields.
 """
@@ -27,6 +27,7 @@ import os
 import uuid
 from typing import Optional
 
+import ollama as ollama_client
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi import Query as QueryParam
 
@@ -49,9 +50,14 @@ from app.services.drive_upload_service import (
 )
 from app.services.rag_service import (
     chunk_text,
+    compute_file_hash,
+    check_duplicate,
+    check_version_conflict,
+    extract_text,
     extract_text_from_pdf,
     generate_answer,
     get_chunks_by_type,
+    get_indexed_files,
     retrieve_chunks,
     store_document_chunks,
 )
@@ -66,7 +72,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     "/upload",
     response_model=UploadResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Upload and ingest a PDF document",
+    summary="Upload and ingest a document",
 )
 async def upload_document(
     document_type: str = QueryParam(
@@ -74,19 +80,24 @@ async def upload_document(
         description="Document category: 'policy', 'regulation', or 'general'",
         pattern="^[a-zA-Z_]{1,50}$",
     ),
+    replace: bool = QueryParam(
+        False,
+        description="If true, replace existing version of the same document.",
+    ),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
     """
     Full document ingestion pipeline:
 
-    1. Save PDF locally under UPLOAD_DIR.
-    2. If Google Drive is configured, upload the file to the Drive folder.
+    1. Save file locally under UPLOAD_DIR.
+    2. Check for duplicates via SHA256 hash. If duplicate, return early.
+    3. If Google Drive is configured, upload the file to the Drive folder.
        Duplicate filenames are detected before upload — no duplicate files
        are created in Drive. The response always reflects the true Drive state.
-    3. Extract text, chunk it, and persist to ChromaDB with full provenance
-       metadata (drive_file_id, drive_file_name, drive_web_view_link, source).
-    4. Return UploadResponse with Drive metadata for immediate frontend display.
+    4. Extract text via format-aware extractor, chunk it, and persist to
+       ChromaDB with full provenance metadata.
+    5. Return UploadResponse with Drive metadata for immediate frontend display.
 
     Google Drive status values:
       "uploaded"  — file pushed to Drive successfully.
@@ -99,11 +110,21 @@ async def upload_document(
         f"user_id={current_user.id}"
     )
 
-    # ---- Validation ----
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
+    # ---- Validation: file extension ----
+    if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are accepted. Ensure the file has a .pdf extension.",
+            detail="Filename is required.",
+        )
+
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Unsupported file format '{file_ext}'. "
+                f"Accepted formats: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+            ),
         )
 
     content = await file.read()
@@ -123,6 +144,42 @@ async def upload_document(
     with open(file_path, "wb") as fh:
         fh.write(content)
     logger.info(f"Saved locally: {file_path} ({size_mb:.2f} MB)")
+
+    # ---- Step 1b: Duplicate detection via SHA256 ----
+    file_hash = compute_file_hash(file_path)
+    dup_info = check_duplicate(file_hash)
+
+    if dup_info["is_duplicate"]:
+        replace_mode = replace
+        if not replace_mode:
+            # Check for version conflict (same name, different hash)
+            version_info = check_version_conflict(file.filename, file_hash)
+            if version_info["is_version_conflict"]:
+                return UploadResponse(
+                    status="version_conflict",
+                    filename=file.filename,
+                    document_type=document_type,
+                    characters=0,
+                    chunks=0,
+                    file_hash=file_hash,
+                    existing_filename=version_info.get("existing_filename"),
+                    message=(
+                        f"A different version of '{file.filename}' is already indexed. "
+                        f"Re-upload with replace=true to update, or rename the file."
+                    ),
+                )
+            return UploadResponse(
+                status="duplicate",
+                filename=file.filename,
+                document_type=document_type,
+                characters=0,
+                chunks=0,
+                file_hash=file_hash,
+                existing_filename=dup_info.get("existing_filename"),
+                message=f"Document already indexed (identical to '{dup_info.get('existing_filename', 'unknown')}').",
+            )
+        else:
+            logger.info(f"Replace mode: re-ingesting '{file.filename}' (hash={file_hash[:12]}...)")
 
     # ---- Step 2: Google Drive upload (non-blocking) ----
     drive_result: Optional[DriveUploadResult] = None
@@ -158,14 +215,14 @@ async def upload_document(
             f"Google Drive not configured — skipping Drive upload for '{file.filename}'."
         )
 
-    # ---- Step 3: Text extraction ----
-    text = extract_text_from_pdf(file_path)
+    # ---- Step 3: Text extraction (format-aware) ----
+    text = extract_text(file_path)
     if not text.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "No readable text could be extracted from the uploaded PDF. "
-                "The file may be scanned or image-only."
+                f"No readable text could be extracted from '{file.filename}'. "
+                f"The file may be empty, corrupted, or require OCR tools not installed on the server."
             ),
         )
 
@@ -184,6 +241,7 @@ async def upload_document(
     #
     extra_metadata: dict = {
         "source": "google_drive" if drive_result else "local_upload",
+        "file_hash": file_hash,
     }
     
     # Extract year from filename or text content
@@ -234,6 +292,7 @@ async def upload_document(
         document_type=document_type,
         characters=len(text),
         chunks=len(chunks),
+        file_hash=file_hash,
         drive_upload_status=drive_upload_status,
         drive_file_id=drive_result.file_id if drive_result else None,
         drive_file_name=drive_result.file_name if drive_result else None,
@@ -270,60 +329,151 @@ def ask_question(
     Retrieve the most relevant document chunks and generate a grounded answer
     using the configured LLM. Sources include all chunk metadata, enabling
     the frontend to display Drive links when available.
+
+    Supports optional file selection via selected_files parameter to restrict
+    retrieval to specific documents.
     """
     logger.info(
         f"Q&A request: user_id={current_user.id} "
-        f"question={payload.question[:100]!r}"
+        f"question={payload.question[:100]!r} "
+        f"selected_files={payload.selected_files}"
     )
 
-    results = retrieve_chunks(payload.question)
-    chunks = results.get("documents", [])
-    metadatas = results.get("metadata", [])
-    distances = results.get("distances", [])
+    try:
+        # ---- Retrieve relevant chunks ----
+        results = retrieve_chunks(
+            payload.question,
+            selected_files=payload.selected_files,
+        )
+        chunks = results.get("documents", [])
+        metadatas = results.get("metadata", [])
+        distances = results.get("distances", [])
 
-    if not chunks:
+        if not chunks:
+            return QuestionResponse(
+                question=payload.question,
+                answer=(
+                    "No relevant documents found. "
+                    "Please upload documents first or adjust your file selection."
+                ),
+                sources=[],
+                diagnostics={
+                    "matched_files": [],
+                    "selected_files": payload.selected_files or [],
+                    "retrieved_chunks_per_file": {},
+                    "total_chunks": 0,
+                    "retrieval_mode": "no_results",
+                },
+            )
+
+        # ---- Format chunks with metadata headers ----
+        formatted_chunks = []
+        source_detail: dict[str, dict] = {}  # per-file aggregation
+
+        for doc, meta, dist in zip(chunks, metadatas, distances):
+            # FIX: Do NOT overwrite meta — it already contains valid ChromaDB metadata
+            if not meta:
+                meta = {}
+            filename = meta.get("filename", "Unknown")
+            chunk_id = meta.get("id", str(uuid.uuid4())[:8])
+            conf = max(0.0, 100.0 - (float(dist) * 100.0)) if dist is not None else 0.0
+            page_num = meta.get("page_number", "N/A")
+            heading = meta.get("section_heading", "N/A")
+
+            header = (
+                f"[File Name: {filename} | Page Number: {page_num} | "
+                f"Chunk ID: {chunk_id} | Section Heading: {heading} | "
+                f"Confidence Score: {conf:.1f}%]"
+            )
+            formatted_chunks.append(f"{header}\n{doc}")
+
+            # Aggregate per-file source detail for enhanced attribution
+            if filename not in source_detail:
+                source_detail[filename] = {
+                    "filename": filename,
+                    "document_type": meta.get("document_type", "unknown"),
+                    "chunks_used": 0,
+                    "sections": [],
+                    "confidence_scores": [],
+                    "drive_web_view_link": meta.get("drive_web_view_link"),
+                }
+            source_detail[filename]["chunks_used"] += 1
+            source_detail[filename]["confidence_scores"].append(conf)
+            if heading and heading != "N/A" and heading not in source_detail[filename]["sections"]:
+                source_detail[filename]["sections"].append(heading)
+
+        # Build enhanced sources with average confidence per file
+        enhanced_sources = []
+        for fname_key, detail in source_detail.items():
+            scores = detail.pop("confidence_scores")
+            detail["confidence"] = round(sum(scores) / len(scores), 1) if scores else 0.0
+            enhanced_sources.append(detail)
+
+        diagnostics = {
+            "matched_files": results.get("matched_filenames", []),
+            "selected_files": payload.selected_files or [],
+            "retrieved_chunks_per_file": results.get("retrieved_chunks_per_filename", {}),
+            "total_chunks": results.get("total_chunks_retrieved", 0),
+            "retrieval_mode": (
+                "filtered" if payload.selected_files else
+                results.get("retrieval_mode", "full_knowledge_base")
+            ),
+        }
+
+        # ---- Check Ollama availability before LLM call ----
+        try:
+            ollama_client.list()
+        except Exception as ollama_err:
+            logger.error(f"Ollama is not reachable: {ollama_err}")
+            return QuestionResponse(
+                question=payload.question,
+                answer=(
+                    "The AI language model (Ollama) is currently unavailable. "
+                    "Please ensure Ollama is running and try again."
+                ),
+                sources=enhanced_sources,
+                diagnostics=diagnostics,
+            )
+
+        # ---- Generate answer via LLM ----
+        answer = generate_answer(
+            question=payload.question,
+            context_chunks=formatted_chunks,
+            comparison_mode=(results.get("retrieval_mode") == "multi_document_comparison"),
+        )
+
+        return QuestionResponse(
+            question=payload.question,
+            answer=answer,
+            sources=enhanced_sources,
+            diagnostics=diagnostics,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Ask question failed: {exc}", exc_info=True)
         return QuestionResponse(
             question=payload.question,
             answer=(
-                "No documents have been uploaded yet. "
-                "Please upload policy or regulation documents first."
+                "An unexpected error occurred while processing your question. "
+                "Please try again or contact support if the issue persists."
             ),
             sources=[],
+            diagnostics={"error": str(exc)},
         )
 
-    formatted_chunks = []
-    for doc, meta, dist in zip(chunks, metadatas, distances):
-        fname = meta.get("filename") or meta.get("drive_file_name") or meta.get("title") or "Unknown"
-        chunk_id = meta.get("id", str(uuid.uuid4())[:8])
-        conf = max(0.0, 100.0 - (float(dist) * 100.0)) if dist is not None else 0.0
-        page_num = meta.get("page_number", "N/A")
-        heading = meta.get("section_heading", "N/A")
-        
-        header = f"[File Name: {fname} | Page Number: {page_num} | Chunk ID: {chunk_id} | Section Heading: {heading} | Confidence Score: {conf:.1f}%]"
-        formatted_chunks.append(f"{header}\n{doc}")
 
-    sources = [m for m in metadatas if m]
-
-    diagnostics = {
-        "matched_filenames": results.get("matched_filenames", []),
-        "retrieved_chunks_per_filename": results.get("retrieved_chunks_per_filename", {}),
-        "total_chunks_retrieved": results.get("total_chunks_retrieved", 0),
-        "retrieval_mode": results.get("retrieval_mode", "standard_qa"),
-        "where_clause": results.get("where_clause")
-    }
-
-    answer = generate_answer(
-        question=payload.question,
-        context_chunks=formatted_chunks,
-        comparison_mode=(diagnostics["retrieval_mode"] == "multi_document_comparison")
-    )
-
-    return QuestionResponse(
-        question=payload.question,
-        answer=answer,
-        sources=sources,
-        diagnostics=diagnostics
-    )
+@router.get(
+    "/indexed-files",
+    summary="List all indexed document filenames",
+)
+def list_indexed_files(
+    current_user: User = Depends(get_current_user),
+):
+    """Return a list of all unique filenames currently indexed in ChromaDB."""
+    files = get_indexed_files()
+    return {"files": files, "total": len(files)}
 
 
 @router.post(

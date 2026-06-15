@@ -28,7 +28,19 @@ export interface ComplianceReportResponse {
   violation_count: number
   audit_timestamp: string
   auditor: string
+  sources?: Array<{
+    filename: string
+    document_type: string
+    chunks_used: number
+    sections: string[]
+    confidence: number
+    drive_web_view_link?: string | null
+  }> | null
+  retrieved_chunk_count?: number | null
+  files_used?: string[] | null
+  retrieval_mode?: string | null
 }
+
 
 export interface DashboardStats {
   total_audits: number
@@ -62,17 +74,42 @@ export interface UploadResponse {
   document_type: string
   characters: number
   chunks: number
+  file_hash?: string | null
   // Google Drive fields — present when drive_upload_status is "uploaded" or "duplicate"
   drive_upload_status: 'uploaded' | 'duplicate' | 'skipped' | 'failed'
   drive_file_id?: string | null
   drive_file_name?: string | null
   drive_web_view_link?: string | null
+  // Duplicate / version conflict information
+  existing_filename?: string | null
+  message?: string | null
+}
+
+export interface IndexedFile {
+  filename: string
+  document_type: string
+  source: string
+  chunk_count: number
 }
 
 export interface QuestionResponse {
   question: string
   answer: string
-  sources: Array<{ filename?: string; document_type?: string }>
+  sources: Array<{
+    filename: string
+    document_type: string
+    chunks_used: number
+    sections: string[]
+    confidence: number
+    drive_web_view_link?: string | null
+  }>
+  diagnostics?: {
+    matched_files: string[]
+    selected_files: string[]
+    retrieved_chunks_per_file: Record<string, number>
+    total_chunks: number
+    retrieval_mode: string
+  } | null
 }
 
 export interface WorkflowRunResponse {
@@ -83,4 +120,15 @@ export interface WorkflowRunResponse {
   total_violations: number | null
   executive_summary: string | null
   error: string | null
+  sources?: Array<{
+    filename: string
+    document_type: string
+    chunks_used: number
+    sections: string[]
+    confidence: number
+    drive_web_view_link?: string | null
+  }> | null
+  retrieved_chunk_count?: number | null
+  files_used?: string[] | null
+  retrieval_mode?: string | null
 }

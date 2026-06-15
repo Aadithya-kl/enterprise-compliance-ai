@@ -23,6 +23,7 @@ class WorkflowRunRequest(BaseModel):
     """Request body for triggering a workflow run."""
     policy_type: str = "policy"
     regulation_type: str = "regulation"
+    selected_files: Optional[list[str]] = None
 
 
 class WorkflowRunResponse(BaseModel):
@@ -34,6 +35,10 @@ class WorkflowRunResponse(BaseModel):
     total_violations: Optional[int] = None
     executive_summary: Optional[str] = None
     error: Optional[str] = None
+    sources: Optional[list[dict]] = None
+    retrieved_chunk_count: Optional[int] = None
+    files_used: Optional[list[str]] = None
+    retrieval_mode: Optional[str] = None
 
 
 @router.post(
@@ -56,12 +61,14 @@ def run_workflow(
     logger.info(
         f"Workflow triggered: user_id={current_user.id} "
         f"policy_type={payload.policy_type} "
-        f"regulation_type={payload.regulation_type}"
+        f"regulation_type={payload.regulation_type} "
+        f"selected_files={payload.selected_files}"
     )
 
     final_state: WorkflowState = run_compliance_workflow(
         policy_type=payload.policy_type,
         regulation_type=payload.regulation_type,
+        selected_files=payload.selected_files,
         user_id=current_user.id,
         db=db,
     )
@@ -87,5 +94,9 @@ def run_workflow(
         compliance_score=final_report.get("compliance_score"),
         total_violations=final_report.get("total_violations"),
         executive_summary=final_report.get("executive_summary"),
+        sources=final_state.get("sources"),
+        retrieved_chunk_count=final_state.get("retrieved_chunk_count"),
+        files_used=final_state.get("files_used"),
+        retrieval_mode=final_state.get("retrieval_mode"),
     )
 
