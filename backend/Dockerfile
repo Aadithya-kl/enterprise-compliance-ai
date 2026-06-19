@@ -15,9 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application code
 COPY . .
 
-# Volumes for persistent data
-VOLUME ["/app/uploads", "/app/chroma_db", "/app/mcp_documents"]
-
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
