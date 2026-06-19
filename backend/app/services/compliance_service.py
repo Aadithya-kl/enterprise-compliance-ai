@@ -8,10 +8,13 @@ import json
 import re
 from datetime import datetime
 
-import ollama
-
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.llm import generate_response
+from app.services.retrieval import (
+    get_sampled_regulation_chunks,
+    retrieve_top_k_for_text,
+)
 
 logger = get_logger(__name__)
 
@@ -123,17 +126,9 @@ def calculate_compliance_score(issues: list) -> int:
 # LLM calls
 # ---------------------------------------------------------------------------
 
-def _call_ollama(prompt: str) -> str:
-    """Execute an Ollama chat completion and return the response content."""
-    try:
-        response = ollama.chat(
-            model=settings.OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response["message"]["content"]
-    except Exception as exc:
-        logger.error(f"Ollama request failed: {exc}", exc_info=True)
-        raise RuntimeError(f"LLM call failed: {exc}") from exc
+def _call_llm(prompt: str) -> str:
+    """Execute an LLM chat completion and return the response content."""
+    return generate_response(prompt=prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -170,39 +165,78 @@ Regulation:
 Company Policy:
 {policy_text}"""
 
-    content = _call_ollama(prompt)
+    content = _call_llm(prompt)
     logger.info("Narrative compliance analysis generated.")
     return content
 
 
-def generate_compliance_report(
-    policy_chunks: list[str],
-    regulation_chunks: list[str],
-) -> dict:
+def generate_compliance_report(selected_files: list[str] | None = None) -> dict:
     """
-    Generate a structured compliance report dict via LLM.
-    Enriches the parsed JSON with risk level, score, timestamp, and auditor.
-    Returns {"raw_response": str} if all JSON parsing strategies fail.
+    Generate a structured compliance report dict via LLM using a Batched Map-Reduce approach.
     """
-    policy_text = "\n\n".join(policy_chunks)
-    regulation_text = "\n\n".join(regulation_chunks)
+    regulation_chunks = get_sampled_regulation_chunks(settings.MAX_REGULATION_CHUNKS, selected_files)
 
-    prompt = f"""You are a Senior Enterprise Compliance Auditor.
+    if not regulation_chunks:
+        return {
+            "violation": False,
+            "issues": ["No regulation chunks found to analyze."],
+            "recommendations": ["Upload a regulation document first."],
+            "structured_violations": []
+        }
 
-CRITICAL INSTRUCTION:
-Return ONLY valid JSON. No markdown. No explanations. No text before or after.
+    batch_size = settings.REGULATION_BATCH_SIZE
+    all_issues = []
+    all_recommendations = []
 
+    map_calls_count = 0
+    retrieved_chunks_count = len(regulation_chunks)
+    estimated_prompt_tokens = 0
+    estimated_completion_tokens = 0
+
+    # Map Phase
+    for i in range(0, len(regulation_chunks), batch_size):
+        batch = regulation_chunks[i:i + batch_size]
+        map_calls_count += 1
+        
+        batch_prompt_parts = []
+        for reg_chunk in batch:
+            policy_chunks = retrieve_top_k_for_text(reg_chunk, "policy", settings.TOP_K_POLICY_CHUNKS, selected_files)
+            retrieved_chunks_count += len(policy_chunks)
+            policy_text = "\n---\n".join(policy_chunks)
+            batch_prompt_parts.append(f"Regulation:\n{reg_chunk}\n\nRelevant Policy:\n{policy_text}")
+            
+        combined_context = "\n\n=== NEXT REQUIREMENT ===\n\n".join(batch_prompt_parts)
+        
+        prompt = f"""You are a Compliance Auditor. Analyze the following regulatory requirements against the retrieved policy sections.
+Identify any compliance violations or missing requirements.
+
+CRITICAL INSTRUCTION: Return ONLY valid JSON matching this schema:
+{{
+    "issues": ["Specific violation description 1"],
+    "recommendations": ["Actionable recommendation 1"]
+}}
+
+{combined_context}"""
+        
+        estimated_prompt_tokens += len(prompt) // 4
+        content = _call_llm(prompt)
+        estimated_completion_tokens += len(content) // 4
+        
+        parsed = _parse_llm_json(content)
+        if parsed:
+            all_issues.extend(parsed.get("issues", []))
+            all_recommendations.extend(parsed.get("recommendations", []))
+
+    # Reduce Phase
+    reduce_prompt = f"""You are a Senior Compliance Auditor.
+Merge and deduplicate the following compliance findings into a final, cohesive structured report.
+
+CRITICAL INSTRUCTION: Return ONLY valid JSON. No markdown.
 Required JSON format:
 {{
     "violation": true,
-    "issues": [
-        "Specific issue description 1",
-        "Specific issue description 2"
-    ],
-    "recommendations": [
-        "Actionable recommendation 1",
-        "Actionable recommendation 2"
-    ],
+    "issues": ["Specific issue description 1"],
+    "recommendations": ["Actionable recommendation 1"],
     "structured_violations": [
         {{
             "violation_type": "Access Control",
@@ -214,35 +248,25 @@ Required JSON format:
     ]
 }}
 
-Choose from these standard values for structured metadata:
-- severity: "Critical", "High", "Medium", "Low"
-- violation_type: E.g., "MFA", "Access Control", "Data Encryption", "Data Privacy", "Audit Logging", "Retention Policy", "Other"
-- department: E.g., "IT", "HR", "Finance", "Operations", "Legal", "General"
-- regulation_category: E.g., "Data Privacy", "Access Security", "Operational Risk"
+Raw Issues: {json.dumps(all_issues)}
+Raw Recommendations: {json.dumps(all_recommendations)}"""
 
-Regulation:
-{regulation_text}
+    estimated_prompt_tokens += len(reduce_prompt) // 4
+    final_content = _call_llm(reduce_prompt)
+    estimated_completion_tokens += len(final_content) // 4
+    reduce_calls_count = 1
 
-Company Policy:
-{policy_text}"""
-
-    content = _call_ollama(prompt)
-    logger.debug(f"Raw LLM response length: {len(content)} chars")
-
-    parsed = _parse_llm_json(content)
+    parsed = _parse_llm_json(final_content)
     if parsed is None:
         logger.warning("JSON parsing failed. Attempting heuristic list parsing...")
-        parsed = _heuristic_parse(content)
+        parsed = _heuristic_parse(final_content)
 
     if parsed is None:
-        logger.error(
-            f"All JSON parse and heuristic strategies failed. Using fallback report structure. "
-            f"Response prefix: {content[:400]}"
-        )
+        logger.error("All JSON parse strategies failed.")
         parsed = {
             "violation": True,
             "issues": ["AI model returned unparseable or malformed compliance report structure."],
-            "recommendations": ["Re-run the audit/analysis or verify the Ollama model configuration."]
+            "recommendations": ["Re-run the audit/analysis or verify the model configuration."]
         }
 
     # Normalise structure
@@ -299,10 +323,20 @@ Company Policy:
     parsed["violation_count"] = len(parsed["issues"])
     parsed["audit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     parsed["auditor"] = "Compliance AI Auditor"
+    
+    # Append metrics
+    parsed["metrics"] = {
+        "map_calls_count": map_calls_count,
+        "reduce_calls_count": reduce_calls_count,
+        "retrieved_chunks_count": retrieved_chunks_count,
+        "estimated_prompt_tokens": estimated_prompt_tokens,
+        "estimated_completion_tokens": estimated_completion_tokens
+    }
 
     logger.info(
         f"Report generated: risk={parsed['risk']} "
         f"score={parsed['compliance_score']} "
-        f"violations={parsed['violation_count']}"
+        f"violations={parsed['violation_count']} "
+        f"map_calls={map_calls_count} reduce_calls={reduce_calls_count}"
     )
     return parsed

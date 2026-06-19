@@ -72,7 +72,7 @@ def configure_logging() -> None:
 
     # Suppress noisy third-party loggers unless in DEBUG
     if level > logging.DEBUG:
-        for noisy in ("uvicorn.access", "sqlalchemy.engine", "chromadb"):
+        for noisy in ("uvicorn.access", "sqlalchemy.engine"):
             logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

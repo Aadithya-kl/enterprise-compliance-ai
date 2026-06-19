@@ -14,7 +14,7 @@ Features:
 - Recursive folder traversal
 - Full pagination (handles folders with more than 100 files)
 - PDF-only ingestion
-- Incremental sync: skips files already present in ChromaDB by drive_file_id
+- Incremental sync: skips files already present in Qdrant by drive_file_id
 - Structured per-file logging
 - Connection verification
 """
@@ -27,6 +27,7 @@ from typing import Optional
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.ingestion import extract_text, get_ingested_ids
 from app.mcp.base import MCPDocument, MCPSource
 
 logger = get_logger(__name__)
@@ -215,7 +216,7 @@ class GoogleDriveMCPSource(MCPSource):
             f"in folder {settings.GOOGLE_DRIVE_FOLDER_ID}"
         )
 
-        # Load already-ingested file IDs from ChromaDB for incremental sync
+        # Load already-ingested file IDs from Qdrant for incremental sync
         already_ingested = self._get_already_ingested_ids()
 
         documents: list[MCPDocument] = []
@@ -236,20 +237,16 @@ class GoogleDriveMCPSource(MCPSource):
                 t = time.monotonic()
                 file_bytes = self._download_file(service, file_id)
 
-                is_docx = filename.lower().endswith(".docx")
-                suffix = ".docx" if is_docx else ".pdf"
+                ext = os.path.splitext(filename)[1].lower()
+                suffix = ext if ext else ".pdf"
 
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(file_bytes)
                     tmp_path = tmp.name
 
                 try:
-                    if is_docx:
-                        from app.services.rag_service import extract_text_from_docx
-                        text = extract_text_from_docx(tmp_path)
-                    else:
-                        from app.services.rag_service import extract_text_from_pdf
-                        text = extract_text_from_pdf(tmp_path)
+
+                    text = extract_text(tmp_path)
                 finally:
                     os.unlink(tmp_path)
 
@@ -334,19 +331,27 @@ class GoogleDriveMCPSource(MCPSource):
         while True:
             query = (
                 f"'{folder_id}' in parents "
-                f"and (mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document') "
+                f"and (mimeType='application/pdf' "
+                f"or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' "
+                f"or mimeType='application/vnd.openxmlformats-officedocument.presentationml.presentation' "
+                f"or mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' "
+                f"or mimeType='text/csv' "
+                f"or mimeType='text/plain') "
                 f"and trashed=false"
             )
             kwargs = {
                 "q": query,
-                "fields": "nextPageToken, files(id, name, webViewLink)",
+                "fields": "nextPageToken, files(id, name, webViewLink, mimeType)",
                 "pageSize": 1000,
             }
             if page_token:
                 kwargs["pageToken"] = page_token
 
             response = service.files().list(**kwargs).execute()
-            drive_files.extend(response.get("files", []))
+            files_batch = response.get("files", [])
+            for f in files_batch:
+                logger.info(f"Discovered file: {f.get('name')} ({f.get('mimeType')})")
+            drive_files.extend(files_batch)
             page_token = response.get("nextPageToken")
             if not page_token:
                 break
@@ -405,7 +410,7 @@ class GoogleDriveMCPSource(MCPSource):
 
     def _get_already_ingested_ids(self) -> set[str]:
         """
-        Query ChromaDB for all chunks that have a drive_file_id in their metadata
+        Query Qdrant for all chunks that have a drive_file_id in their metadata
         and return that set of IDs.
 
         This covers both:
@@ -413,33 +418,14 @@ class GoogleDriveMCPSource(MCPSource):
           - Files uploaded through the UI that were simultaneously pushed to Drive
 
         Incremental sync uses this set to skip re-downloading files already in
-        ChromaDB regardless of which ingestion path added them.
+        Qdrant regardless of which ingestion path added them.
         """
         try:
-            from app.services.rag_service import _collection  # noqa: PLC0415
 
-            # Query all chunks that carry a source=google_drive tag.
-            # Falls back to scanning all metadatas for drive_file_id if the
-            # source field is absent (e.g. data ingested before this change).
-            results = _collection.get(
-                where={"source": {"$eq": "google_drive"}},
-                include=["metadatas"],
-            )
-            ids: set[str] = set()
-            for meta in (results.get("metadatas") or []):
-                if meta and meta.get("drive_file_id"):
-                    ids.add(meta["drive_file_id"])
-
-            # Also pick up any legacy chunks that have drive_file_id but no
-            # source field (written by older versions of the code).
-            if not ids:
-                all_results = _collection.get(include=["metadatas"])
-                for meta in (all_results.get("metadatas") or []):
-                    if meta and meta.get("drive_file_id"):
-                        ids.add(meta["drive_file_id"])
-
+            ids = get_ingested_ids("drive_file_id")
+            
             logger.debug(
-                f"Google Drive MCP: {len(ids)} file IDs already in ChromaDB"
+                f"Google Drive MCP: {len(ids)} file IDs already in Qdrant"
             )
             return ids
         except Exception as exc:

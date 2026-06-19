@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """AuditReport CRUD operations."""
 
 import json
@@ -48,7 +50,8 @@ class CRUDAuditReport(CRUDBase[AuditReport]):
         
         try:
             report_dt = datetime.strptime(report.get("audit_timestamp", ""), "%Y-%m-%d %H:%M:%S")
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             report_dt = datetime.now()
 
         structured_violations = report.get("structured_violations", [])

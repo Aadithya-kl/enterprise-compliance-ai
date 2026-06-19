@@ -18,7 +18,7 @@ class MCPSource(ABC):
     """
     Abstract base for all MCP document sources.
     Each integration implements fetch_documents() to return
-    a list of MCPDocument instances that will be ingested into ChromaDB.
+    a list of MCPDocument instances that will be ingested into Qdrant.
     """
 
     @property

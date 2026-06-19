@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """User CRUD operations."""
 
 from datetime import datetime, timezone
@@ -42,7 +44,8 @@ class CRUDUser(CRUDBase[User]):
             db.commit()
             db.refresh(user)
             return user
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise
 
@@ -53,7 +56,8 @@ class CRUDUser(CRUDBase[User]):
             db.commit()
             db.refresh(user)
             return user
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise
 
@@ -64,7 +68,8 @@ class CRUDUser(CRUDBase[User]):
             db.commit()
             db.refresh(user)
             return user
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise
 
@@ -75,7 +80,8 @@ class CRUDUser(CRUDBase[User]):
             db.commit()
             db.refresh(user)
             return user
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise
 

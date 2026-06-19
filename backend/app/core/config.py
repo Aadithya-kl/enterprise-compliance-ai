@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # Database (Supabase PostgreSQL)
     # -----------------------------------------------------------------------
     DATABASE_URL: str = Field(..., description="PostgreSQL connection string")
+    
+    SUPABASE_URL: str = Field(..., description="Supabase API URL")
+    SUPABASE_SERVICE_ROLE_KEY: str = Field(..., description="Supabase Service Role Key")
+    SUPABASE_STORAGE_BUCKET: str = "compliance_documents"
 
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
@@ -77,21 +81,21 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     # -----------------------------------------------------------------------
-    # Ollama / LLM
+    # Gemini / LLM
     # -----------------------------------------------------------------------
-    OLLAMA_MODEL: str = "llama3"
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    GEMINI_API_KEY: str = Field(..., description="Google Gemini API Key")
+    GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # -----------------------------------------------------------------------
-    # ChromaDB
+    # Qdrant Cloud
     # -----------------------------------------------------------------------
-    CHROMA_DB_PATH: str = "./chroma_db"
-    CHROMA_COLLECTION_NAME: str = "documents"
+    QDRANT_URL: str = Field(..., description="Qdrant Cloud URL")
+    QDRANT_API_KEY: str = Field(..., description="Qdrant API Key")
+    QDRANT_COLLECTION_NAME: str = "documents"
 
     # -----------------------------------------------------------------------
     # File Storage
     # -----------------------------------------------------------------------
-    UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
     ALLOWED_EXTENSIONS: list[str] = [
         ".pdf", ".docx", ".doc", ".txt", ".rtf", ".odt",
@@ -136,6 +140,14 @@ class Settings(BaseSettings):
     # Maximum seconds the full AI workflow is allowed to run before aborting.
     # Covers all agent LLM calls in aggregate. Default 300s = 5 minutes.
     WORKFLOW_TIMEOUT_SECONDS: int = 300
+
+    # -----------------------------------------------------------------------
+    # RAG Optimization
+    # -----------------------------------------------------------------------
+    TOP_K_POLICY_CHUNKS: int = 5
+    MAX_REGULATION_CHUNKS: int = 20
+    MAX_CONTEXT_TOKENS: int = 12000
+    REGULATION_BATCH_SIZE: int = 5
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

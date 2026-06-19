@@ -106,7 +106,8 @@ def update_user(
             user.full_name = payload.full_name
             db.commit()
             db.refresh(user)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise
 

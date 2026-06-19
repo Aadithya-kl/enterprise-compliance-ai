@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 Generic typed CRUD base class.
 Subclass this to get create/read/update/delete without repeating boilerplate.
@@ -51,7 +53,8 @@ class CRUDBase(Generic[ModelType]):
             db.commit()
             db.refresh(obj)
             return obj
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise
 
@@ -67,6 +70,7 @@ class CRUDBase(Generic[ModelType]):
             db.delete(record)
             db.commit()
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception caught: {e}", exc_info=True)
             db.rollback()
             raise

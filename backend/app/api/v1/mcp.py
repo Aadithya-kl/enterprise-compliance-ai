@@ -4,22 +4,24 @@ POST /api/v1/mcp/sync — trigger sync from all configured MCP sources
 GET  /api/v1/mcp/sources — list configured and available sources
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, BackgroundTasks
 from pydantic import BaseModel
 
 from app.core.dependencies import get_admin
 from app.core.logging import get_logger
 from app.mcp.google_drive import GoogleDriveMCPSource
-from app.mcp.local_files import LocalFilesMCPSource
 from app.mcp.notion import NotionMCPSource
 from app.models.user import User
-from app.services.rag_service import chunk_text, store_document_chunks
+from app.services.ingestion import (
+    chunk_text,
+    store_document_chunks,
+    get_document_metadata,
+)
 
 router = APIRouter(prefix="/mcp", tags=["MCP Integrations"])
 logger = get_logger(__name__)
 
 _SOURCES = [
-    LocalFilesMCPSource(),
     GoogleDriveMCPSource(),
     NotionMCPSource(),
 ]
@@ -62,7 +64,7 @@ def list_sources(_admin: User = Depends(get_admin)):
 def sync_all_sources(_admin: User = Depends(get_admin)):
     """
     Iterates all configured MCP sources, fetches documents,
-    chunks them, and stores in ChromaDB for RAG retrieval.
+    chunks them, and stores in Qdrant for RAG retrieval.
     """
     results: list[SyncResult] = []
     total_ingested = 0
@@ -143,31 +145,31 @@ class MCPStatsResponse(BaseModel):
 )
 def get_mcp_stats(_admin: User = Depends(get_admin)):
     """Returns knowledge source metrics for the dashboard widget."""
-    from app.services.rag_service import _collection
     
     stats = {}
-    sources = ["local_files", "google_drive", "notion"]
+    sources = ["supabase_storage", "google_drive", "notion"]
     
     try:
-        results = _collection.get(include=["metadatas"])
-        metadatas = results.get("metadatas") or []
+        metadatas = get_document_metadata()
         
         for source_name in sources:
-            source_metas = [m for m in metadatas if m and m.get("source") == source_name]
+            if source_name == "supabase_storage":
+                # Catch all local/uploaded docs to ensure identical total counts
+                source_metas = [m for m in metadatas if m and m.get("source") not in ["google_drive", "notion"]]
+            else:
+                source_metas = [m for m in metadatas if m and m.get("source") == source_name]
             
-            # Count unique documents by looking at notion_page_id or drive_file_id or filename
+            # Count unique documents purely by filename to perfectly match get_indexed_files()
             unique_docs = set()
             for m in source_metas:
-                if m.get("notion_page_id"):
-                    unique_docs.add(m.get("notion_page_id"))
-                elif m.get("drive_file_id"):
-                    unique_docs.add(m.get("drive_file_id"))
-                elif m.get("filename"):
-                    unique_docs.add(m.get("filename"))
+                fname = m.get("filename")
+                if fname:
+                    unique_docs.add(fname)
                     
             is_connected = False
-            if source_name == "local_files":
-                is_connected = True
+            if source_name == "supabase_storage":
+                from app.services.supabase_storage import supabase_storage_service
+                is_connected = supabase_storage_service.is_configured()
             elif source_name == "google_drive":
                 is_connected = GoogleDriveMCPSource().is_configured()
             elif source_name == "notion":
@@ -181,7 +183,7 @@ def get_mcp_stats(_admin: User = Depends(get_admin)):
             )
             
     except Exception as exc:
-        logger.error(f"Failed to fetch MCP stats from ChromaDB: {exc}")
+        logger.error(f"Failed to fetch MCP stats from Qdrant: {exc}")
         # Return empty stats on failure
         for source_name in sources:
             stats[source_name] = MCPStatsResponse(
@@ -196,14 +198,9 @@ def get_mcp_stats(_admin: User = Depends(get_admin)):
 # ---------------------------------------------------------------------------
 
 
-class GoogleDriveSyncResponse(BaseModel):
-    """Response returned by the Google Drive dedicated sync endpoint."""
-    documents_found: int
-    documents_processed: int
-    documents_skipped: int
-    chunks_created: int
+class SyncJobResponse(BaseModel):
+    job_id: str
     status: str
-
 
 class GoogleDriveVerifyResponse(BaseModel):
     """Detailed diagnostic response from the Google Drive verify endpoint."""
@@ -214,24 +211,70 @@ class GoogleDriveVerifyResponse(BaseModel):
     folder_accessible: bool
     message: str
 
-
 _google_drive_source = GoogleDriveMCPSource()
 
+def _process_google_drive_sync_background(job_id: str):
+    from app.db.session import SessionLocal
+    from app.models.sync_job import SyncJob
+    from datetime import datetime
+    import time
+    
+    db = SessionLocal()
+    job = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
+    if not job:
+        db.close()
+        return
+        
+    try:
+        job.status = "Discovering Documents..."
+        db.commit()
+        
+        documents = _google_drive_source.fetch_documents()
+        total_docs = len(documents)
+        job.total_documents = total_docs
+        job.status = f"Processing 0 of {total_docs} Files..."
+        db.commit()
+        
+        processed = 0
+        total_chunks = 0
+        for doc in documents:
+            try:
+                chunks = chunk_text(doc.content)
+                store_document_chunks(
+                    chunks,
+                    filename=doc.title,
+                    document_type=doc.document_type,
+                    extra_metadata=doc.metadata or {},
+                )
+                total_chunks += len(chunks)
+                processed += 1
+                
+                # Update progress
+                job.documents_processed = processed
+                job.chunks_generated = total_chunks
+                job.status = f"Processing {processed} of {total_docs} Files..."
+                db.commit()
+            except Exception as exc:
+                logger.error(f"Google Drive ingest error [{doc.title}]: {exc}")
+                
+        job.status = "Sync Complete"
+        job.completed_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"Google Drive background sync complete: {processed} processed, {total_chunks} chunks.")
+    except Exception as exc:
+        job.status = f"Failed: {str(exc)}"
+        job.completed_at = datetime.utcnow()
+        db.commit()
+        logger.error(f"Google Drive background sync failed: {exc}", exc_info=True)
+    finally:
+        db.close()
 
 @router.post(
     "/google-drive/sync",
-    response_model=GoogleDriveSyncResponse,
+    response_model=SyncJobResponse,
     summary="Sync PDF documents from the configured Google Drive folder (admin only)",
 )
-def sync_google_drive(_admin: User = Depends(get_admin)):
-    """
-    Fetches all PDF files from the configured Google Drive folder,
-    extracts text, chunks it, and stores it in ChromaDB for RAG retrieval.
-
-    Only files not already present in ChromaDB are downloaded (incremental sync).
-    Sub-folders are traversed recursively.
-    Full pagination is used — handles folders with more than 100 files.
-    """
+def sync_google_drive(background_tasks: BackgroundTasks, _admin: User = Depends(get_admin)):
     if not _google_drive_source.is_configured():
         from fastapi import HTTPException, status as http_status
         raise HTTPException(
@@ -243,56 +286,26 @@ def sync_google_drive(_admin: User = Depends(get_admin)):
             ),
         )
 
+    import uuid
+    from app.db.session import SessionLocal
+    from app.models.sync_job import SyncJob
+    
+    job_id = str(uuid.uuid4())
+    db = SessionLocal()
     try:
-        # fetch_documents now returns only the NEW documents
-        # We need the source to tell us how many were skipped
-        # Since fetch_documents returns list[MCPDocument], we can't easily get skipped count
-        # without changing the interface. For now, we'll just return it as 0 if we don't know,
-        # but wait, let's change fetch_documents in google_drive.py first to return skipped.
-        # Actually, let's just return what we have.
-        documents = _google_drive_source.fetch_documents()
-        # Wait, if we want to get the skipped count from the logs, we can just read the class state if we add it.
-        skipped_count = getattr(_google_drive_source, 'last_skipped_count', 0)
-        total_found = getattr(_google_drive_source, 'last_total_found', len(documents))
-    except Exception as exc:
-        logger.error(f"Google Drive sync error: {exc}", exc_info=True)
-        from fastapi import HTTPException, status as http_status
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Google Drive sync failed: {exc}",
+        new_job = SyncJob(
+            job_id=job_id,
+            source="google_drive",
+            status="Starting Sync..."
         )
+        db.add(new_job)
+        db.commit()
+    finally:
+        db.close()
 
-    total_chunks = 0
-    processed = 0
+    background_tasks.add_task(_process_google_drive_sync_background, job_id)
 
-    for doc in documents:
-        try:
-            chunks = chunk_text(doc.content)
-            store_document_chunks(
-                chunks,
-                filename=doc.title,
-                document_type=doc.document_type,
-                extra_metadata=doc.metadata or {},
-            )
-            total_chunks += len(chunks)
-            processed += 1
-        except Exception as exc:
-            logger.error(
-                f"Google Drive ingest error [{doc.title}]: {exc}"
-            )
-
-    logger.info(
-        f"Google Drive sync complete: {processed}/{len(documents)} documents processed, "
-        f"{total_chunks} chunks created."
-    )
-
-    return GoogleDriveSyncResponse(
-        documents_found=total_found,
-        documents_processed=processed,
-        documents_skipped=skipped_count,
-        chunks_created=total_chunks,
-        status="success",
-    )
+    return SyncJobResponse(job_id=job_id, status="Starting Sync...")
 
 
 @router.get(
@@ -301,18 +314,7 @@ def sync_google_drive(_admin: User = Depends(get_admin)):
     summary="Verify Google Drive API connection and folder access (admin only)",
 )
 def verify_google_drive_connection(_admin: User = Depends(get_admin)):
-    """
-    Tests Google Drive connectivity step by step:
-    1. Confirms credential file exists on disk.
-    2. Loads and validates service account credentials.
-    3. Initializes the Drive API client.
-    4. Verifies folder access.
-
-    Returns per-step diagnostic flags so the operator can pinpoint the failure.
-    The most common failure is step 4 (folder_accessible=false), which means
-    the Google Drive folder has not been shared with the service account email.
-    """
-    # Create a fresh instance to avoid stale module-level singleton
+    """Tests Google Drive connectivity step by step."""
     source = GoogleDriveMCPSource()
     result = source.verify_connection()
     return GoogleDriveVerifyResponse(
@@ -329,14 +331,6 @@ def verify_google_drive_connection(_admin: User = Depends(get_admin)):
 # Notion — dedicated sync endpoint
 # ---------------------------------------------------------------------------
 
-class NotionSyncResponse(BaseModel):
-    """Response returned by the Notion dedicated sync endpoint."""
-    documents_found: int
-    documents_processed: int
-    documents_skipped: int
-    chunks_created: int
-    status: str
-
 class NotionVerifyResponse(BaseModel):
     """Detailed diagnostic response from the Notion verify endpoint."""
     connected: bool
@@ -348,16 +342,68 @@ class NotionVerifyResponse(BaseModel):
 
 _notion_source = NotionMCPSource()
 
+def _process_notion_sync_background(job_id: str):
+    from app.db.session import SessionLocal
+    from app.models.sync_job import SyncJob
+    from datetime import datetime
+    
+    db = SessionLocal()
+    job = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
+    if not job:
+        db.close()
+        return
+        
+    try:
+        job.status = "Discovering Documents..."
+        db.commit()
+        
+        documents = _notion_source.fetch_documents()
+        total_docs = len(documents)
+        job.total_documents = total_docs
+        job.status = f"Processing 0 of {total_docs} Files..."
+        db.commit()
+
+        total_chunks = 0
+        processed = 0
+
+        for doc in documents:
+            try:
+                chunks = chunk_text(doc.content)
+                store_document_chunks(
+                    chunks,
+                    filename=doc.title,
+                    document_type=doc.document_type,
+                    extra_metadata=doc.metadata or {},
+                )
+                total_chunks += len(chunks)
+                processed += 1
+                
+                # Update progress
+                job.documents_processed = processed
+                job.chunks_generated = total_chunks
+                job.status = f"Processing {processed} of {total_docs} Files..."
+                db.commit()
+            except Exception as exc:
+                logger.error(f"Notion ingest error [{doc.title}]: {exc}")
+
+        job.status = "Sync Complete"
+        job.completed_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"Notion background sync complete: {processed}/{total_docs} documents processed, {total_chunks} chunks created.")
+    except Exception as exc:
+        job.status = f"Failed: {str(exc)}"
+        job.completed_at = datetime.utcnow()
+        db.commit()
+        logger.error(f"Notion background sync failed: {exc}", exc_info=True)
+    finally:
+        db.close()
+
 @router.post(
     "/notion/sync",
-    response_model=NotionSyncResponse,
+    response_model=SyncJobResponse,
     summary="Sync pages from the configured Notion database (admin only)",
 )
-def sync_notion(_admin: User = Depends(get_admin)):
-    """
-    Fetches all pages from the configured Notion database,
-    extracts text, chunks it, and stores it in ChromaDB for RAG retrieval.
-    """
+def sync_notion(background_tasks: BackgroundTasks, _admin: User = Depends(get_admin)):
     if not _notion_source.is_configured():
         from fastapi import HTTPException, status as http_status
         raise HTTPException(
@@ -365,47 +411,53 @@ def sync_notion(_admin: User = Depends(get_admin)):
             detail="Notion integration is not configured. Set NOTION_API_TOKEN and NOTION_DATABASE_ID in .env.",
         )
 
+    import uuid
+    from app.db.session import SessionLocal
+    from app.models.sync_job import SyncJob
+    
+    job_id = str(uuid.uuid4())
+    db = SessionLocal()
     try:
-        documents = _notion_source.fetch_documents()
-        skipped_count = getattr(_notion_source, 'last_skipped_count', 0)
-        total_found = getattr(_notion_source, 'last_total_found', len(documents))
-    except Exception as exc:
-        logger.error(f"Notion sync error: {exc}", exc_info=True)
-        from fastapi import HTTPException, status as http_status
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Notion sync failed: {exc}",
+        new_job = SyncJob(
+            job_id=job_id,
+            source="notion",
+            status="Starting Sync..."
         )
+        db.add(new_job)
+        db.commit()
+    finally:
+        db.close()
 
-    total_chunks = 0
-    processed = 0
+    background_tasks.add_task(_process_notion_sync_background, job_id)
 
-    for doc in documents:
-        try:
-            chunks = chunk_text(doc.content)
-            store_document_chunks(
-                chunks,
-                filename=doc.title,
-                document_type=doc.document_type,
-                extra_metadata=doc.metadata or {},
-            )
-            total_chunks += len(chunks)
-            processed += 1
-        except Exception as exc:
-            logger.error(f"Notion ingest error [{doc.title}]: {exc}")
+    return SyncJobResponse(job_id=job_id, status="Starting Sync...")
 
-    logger.info(
-        f"Notion sync complete: {processed}/{len(documents)} documents processed, "
-        f"{total_chunks} chunks created."
-    )
-
-    return NotionSyncResponse(
-        documents_found=total_found,
-        documents_processed=processed,
-        documents_skipped=skipped_count,
-        chunks_created=total_chunks,
-        status="success",
-    )
+@router.get(
+    "/sync/status/{job_id}",
+    summary="Get the status of a background sync job",
+)
+def get_sync_status(job_id: str, _admin: User = Depends(get_admin)):
+    from fastapi import HTTPException
+    from app.db.session import SessionLocal
+    from app.models.sync_job import SyncJob
+    
+    db = SessionLocal()
+    try:
+        job = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Sync job not found")
+            
+        return {
+            "job_id": job.job_id,
+            "status": job.status,
+            "documents_processed": job.documents_processed,
+            "total_documents": job.total_documents,
+            "chunks_generated": job.chunks_generated,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
+        }
+    finally:
+        db.close()
 
 @router.get(
     "/notion/verify",

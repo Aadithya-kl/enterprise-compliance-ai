@@ -104,12 +104,18 @@ export interface QuestionResponse {
     drive_web_view_link?: string | null
   }>
   diagnostics?: {
-    matched_files: string[]
-    selected_files: string[]
-    retrieved_chunks_per_file: Record<string, number>
-    total_chunks: number
-    retrieval_mode: string
+    matched_files?: string[]
+    selected_files?: string[]
+    retrieved_chunks_per_file?: Record<string, number>
+    total_chunks?: number
+    retrieval_mode?: string
+    strategy?: string
+    coverage?: string
+    documents_used?: number
+    documents_searched?: number
+    distribution?: Record<string, number>
   } | null
+  suggested_questions?: string[]
 }
 
 export interface WorkflowRunResponse {

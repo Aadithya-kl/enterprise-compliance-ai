@@ -228,6 +228,21 @@ export default function ComplianceReportsPage() {
             </div>
           )}
 
+          {/* Empty State */}
+          {!reportMutation.isPending && !quickReport && !error && (
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-900/10">
+               <div className="w-16 h-16 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center">
+                <svg className="w-8 h-8 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Ready for Generation</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
+                    Select your framework above and click "Generate Report" to audit your indexed policies.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Quick Report Result */}
           {quickReport && (
             <div className="space-y-4">
@@ -596,10 +611,10 @@ function ReportCard({
             Issues ({violations})
           </h3>
           <ul className="space-y-3">
-            {issues.length === 0 ? (
+            {(issues || []).length === 0 ? (
               <li className="text-xs text-gray-400">No issues identified</li>
             ) : (
-              issues.map((issue, i) => {
+              (issues || []).map((issue, i) => {
                 const evidence = getEvidenceForFinding(issue)
                 const isExpanded = !!expandedIssues[`issue-${i}`]
                 return (
@@ -646,10 +661,10 @@ function ReportCard({
             Recommendations
           </h3>
           <ul className="space-y-3">
-            {recommendations.length === 0 ? (
+            {(recommendations || []).length === 0 ? (
               <li className="text-xs text-gray-400">No recommendations</li>
             ) : (
-              recommendations.map((rec, i) => {
+              (recommendations || []).map((rec, i) => {
                 const evidence = getEvidenceForFinding(rec)
                 const isExpanded = !!expandedRecommendations[`rec-${i}`]
                 return (

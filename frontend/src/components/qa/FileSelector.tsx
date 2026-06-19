@@ -51,8 +51,8 @@ function getCategoryInfo(docType: string) {
 }
 
 export default function FileSelector({
-  files,
-  selectedFiles,
+  files = [],
+  selectedFiles = [],
   onSelectionChange,
   loading = false,
 }: FileSelectorProps) {

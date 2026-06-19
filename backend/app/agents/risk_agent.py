@@ -4,7 +4,7 @@ Ingests the compliance analysis output and produces a detailed risk assessment
 with per-issue severity classification and prioritised mitigation recommendations.
 
 The mitigation roadmap is generated deterministically from the classified issues
-without an additional LLM call. This eliminates one blocking Ollama round-trip
+without an additional LLM call. This eliminates one blocking LLM round-trip
 and ensures the workflow completes within acceptable time bounds.
 """
 

@@ -26,7 +26,10 @@ from app.services.compliance_service import (
     calculate_compliance_score,
     generate_compliance_report,
 )
-from app.services.rag_service import get_chunks_by_type, get_chunks_with_metadata_by_type
+from app.services.retrieval import (
+    get_document_chunks_by_type,
+    get_chunks_with_metadata_by_type,
+)
 from app.schemas.document import ComplianceReportRequest
 from typing import Optional
 
@@ -47,7 +50,7 @@ def create_compliance_report(
 ):
     """
     Orchestrates the full compliance pipeline:
-    1. Retrieve policy and regulation chunks from ChromaDB
+    1. Retrieve policy and regulation chunks from Qdrant
     2. Call the LLM to produce a structured JSON report
     3. Persist to Supabase and return the saved record
     """
@@ -58,18 +61,13 @@ def create_compliance_report(
     policy_chunks = policy_res["documents"]
     regulation_chunks = regulation_res["documents"]
 
-    if not policy_chunks:
+    if not policy_chunks and not regulation_chunks:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No policy documents found. Upload a policy PDF first.",
-        )
-    if not regulation_chunks:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No regulation documents found. Upload a regulation PDF first.",
+            detail="No documents found for analysis. Please upload at least one document or verify your selection.",
         )
 
-    report = generate_compliance_report(policy_chunks, regulation_chunks)
+    report = generate_compliance_report(selected_files)
 
     if "raw_response" in report:
         logger.error(
@@ -145,7 +143,8 @@ def create_compliance_report(
         sources=sources,
         retrieved_chunk_count=retrieved_chunk_count,
         files_used=files_used,
-        retrieval_mode=retrieval_mode
+        retrieval_mode=retrieval_mode,
+        metrics=report.get("metrics")
     )
 
 
@@ -163,8 +162,8 @@ def assess_compliance_risk(
     No database write occurs.
     """
     selected_files = payload.selected_files if payload else None
-    policy_chunks = get_chunks_by_type("policy", selected_files=selected_files)
-    regulation_chunks = get_chunks_by_type("regulation", selected_files=selected_files)
+    policy_chunks = get_document_chunks_by_type("policy", selected_files=selected_files)
+    regulation_chunks = get_document_chunks_by_type("regulation", selected_files=selected_files)
 
     if not policy_chunks or not regulation_chunks:
         raise HTTPException(
@@ -175,7 +174,7 @@ def assess_compliance_risk(
             ),
         )
 
-    report = generate_compliance_report(policy_chunks, regulation_chunks)
+    report = generate_compliance_report(selected_files)
 
     if "raw_response" in report:
         raise HTTPException(

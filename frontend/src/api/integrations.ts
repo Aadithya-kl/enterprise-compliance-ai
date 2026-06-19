@@ -9,8 +9,9 @@ export interface MCPStatsResponse {
 
 export interface HealthResponse {
   database: string
-  chromadb: string
-  ollama: string
+  qdrant: string
+  supabase: string
+  llm: string
   google_drive: string
   notion: string
   backend: string
@@ -23,11 +24,18 @@ export interface VerifyResponse {
 }
 
 export interface SyncResponse {
-  documents_found: number
-  documents_processed: number
-  documents_skipped: number
-  chunks_created: number
+  job_id: string
   status: string
+}
+
+export interface SyncStatus {
+  job_id: string
+  status: string
+  documents_processed: number
+  total_documents: number
+  chunks_generated: number
+  started_at: string
+  completed_at: string | null
 }
 
 export const integrationsApi = {
@@ -58,6 +66,11 @@ export const integrationsApi = {
 
   syncNotion: async (): Promise<SyncResponse> => {
     const res = await client.post<SyncResponse>('/mcp/notion/sync')
+    return res.data
+  },
+
+  getSyncStatus: async (jobId: string): Promise<SyncStatus> => {
+    const res = await client.get<SyncStatus>(`/mcp/sync/status/${jobId}`)
     return res.data
   },
 

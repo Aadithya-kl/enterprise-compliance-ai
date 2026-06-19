@@ -67,8 +67,12 @@ export default function AuditHistoryPage() {
           {isLoading ? (
             <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
           ) : reports.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">
-              No audit reports yet. Generate one from Compliance Reports.
+            <div className="flex flex-col items-center justify-center p-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center">
+                <svg className="w-6 h-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-200">No Audit Reports</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Your historical compliance audits will appear here.</p>
             </div>
           ) : (
             <ul className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -145,11 +149,11 @@ export default function AuditHistoryPage() {
               <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide mb-2">
                 Issues
               </p>
-              {selected.issues.length === 0 ? (
+              {(selected.issues || []).length === 0 ? (
                 <p className="text-xs text-gray-400">No issues</p>
               ) : (
                 <ul className="space-y-1">
-                  {selected.issues.map((issue, i) => (
+                  {(selected.issues || []).map((issue, i) => (
                     <li key={i} className="flex gap-2 text-xs text-gray-700 dark:text-gray-300">
                       <span className="text-red-500">•</span>{issue}
                     </li>
@@ -162,11 +166,11 @@ export default function AuditHistoryPage() {
               <p className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide mb-2">
                 Recommendations
               </p>
-              {selected.recommendations.length === 0 ? (
+              {(selected.recommendations || []).length === 0 ? (
                 <p className="text-xs text-gray-400">No recommendations</p>
               ) : (
                 <ul className="space-y-1">
-                  {selected.recommendations.map((rec, i) => (
+                  {(selected.recommendations || []).map((rec, i) => (
                     <li key={i} className="flex gap-2 text-xs text-gray-700 dark:text-gray-300">
                       <span className="text-green-500">•</span>{rec}
                     </li>

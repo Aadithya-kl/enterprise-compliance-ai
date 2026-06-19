@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 Security utilities: JWT token creation/verification, password hashing.
 All cryptographic operations are centralised here.
@@ -34,7 +36,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             return False
         hashed_bytes = hashed_password.encode("utf-8")
         return bcrypt.checkpw(pwd_bytes, hashed_bytes)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Exception caught: {e}", exc_info=True)
         return False
 
 

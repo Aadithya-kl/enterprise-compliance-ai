@@ -12,6 +12,8 @@ Requires: pip install notion-client
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.mcp.base import MCPDocument, MCPSource
+from app.services.retrieval import get_metadata_by_source
+from app.services.ingestion import delete_chunks_by_metadata
 
 logger = get_logger(__name__)
 
@@ -59,7 +61,7 @@ class NotionMCPSource(MCPSource):
         # Remove orphaned vectors (pages deleted from Notion)
         orphans = set(already_ingested.keys()) - current_page_ids
         if orphans:
-            logger.info(f"Notion MCP: removing {len(orphans)} orphaned pages from ChromaDB")
+            logger.info(f"Notion MCP: removing {len(orphans)} orphaned pages from Qdrant")
             self._delete_notion_pages(orphans)
 
         for page in pages:
@@ -113,15 +115,11 @@ class NotionMCPSource(MCPSource):
         return documents
 
     def _get_already_ingested_info(self) -> dict[str, str]:
-        """Query ChromaDB for notion_page_id and last_edited_time to support sync."""
+        """Query Qdrant for notion_page_id and last_edited_time to support sync."""
         try:
-            from app.services.rag_service import _collection
-            results = _collection.get(
-                where={"source": {"$eq": "notion"}},
-                include=["metadatas"],
-            )
+            metadatas = get_metadata_by_source("notion")
             info: dict[str, str] = {}
-            for meta in (results.get("metadatas") or []):
+            for meta in metadatas:
                 if meta and meta.get("notion_page_id"):
                     page_id = meta["notion_page_id"]
                     # If multiple chunks exist, they should have the same timestamp, but just in case:
@@ -136,11 +134,7 @@ class NotionMCPSource(MCPSource):
         if not page_ids:
             return
         try:
-            from app.services.rag_service import _collection
-            # ChromaDB where condition for in-list is $in
-            _collection.delete(
-                where={"notion_page_id": {"$in": list(page_ids)}}
-            )
+            delete_chunks_by_metadata({"notion_page_id": {"$in": list(page_ids)}})
         except Exception as exc:
             logger.warning(f"Notion MCP: failed to delete old vectors: {exc}")
 

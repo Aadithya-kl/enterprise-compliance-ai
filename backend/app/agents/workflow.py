@@ -27,7 +27,10 @@ from app.agents.report_agent import ReportAgent
 from app.agents.risk_agent import RiskAgent
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.services.rag_service import get_chunks_by_type, get_chunks_with_metadata_by_type
+from app.services.retrieval import (
+    get_document_chunks_by_type,
+    get_chunks_with_metadata_by_type,
+)
 
 logger = get_logger(__name__)
 
@@ -84,7 +87,7 @@ _report_agent = ReportAgent()
 
 
 def retrieve_documents(state: WorkflowState) -> WorkflowState:
-    """Fetch policy and regulation chunks from ChromaDB."""
+    """Fetch policy and regulation chunks from Qdrant."""
     t = time.monotonic()
     logger.info("[retrieve_documents] ENTER")
     try:
@@ -95,21 +98,19 @@ def retrieve_documents(state: WorkflowState) -> WorkflowState:
         policy_res = get_chunks_with_metadata_by_type(policy_type, selected_files=selected_files)
         regulation_res = get_chunks_with_metadata_by_type(regulation_type, selected_files=selected_files)
 
-        policy_chunks = policy_res["documents"]
-        regulation_chunks = regulation_res["documents"]
+        logger.info(f"Retrieval Audit - selected_files: {selected_files}")
+        logger.info(f"Retrieval Audit - policy_chunks found: {len(policy_res['documents'])}")
+        logger.info(f"Retrieval Audit - regulation_chunks found: {len(regulation_res['documents'])}")
 
-        logger.info(
-            f"[retrieve_documents] EXIT in {time.monotonic()-t:.2f}s — "
-            f"policy={len(policy_chunks)} chunks regulation={len(regulation_chunks)} chunks"
-        )
-
-        if not policy_chunks:
-            return {**state, "error": f"No documents of type '{policy_type}' found in ChromaDB. Upload a PDF first."}
-        if not regulation_chunks:
-            return {**state, "error": f"No documents of type '{regulation_type}' found in ChromaDB. Upload a PDF first."}
+        if not policy_res["documents"] and not regulation_res["documents"]:
+            msg = "Insufficient data: At least 1 document of any type is required to run the compliance workflow."
+            if selected_files:
+                return {**state, "error": f"{msg} Please adjust your file selection."}
+            else:
+                return {**state, "error": f"{msg} Please ensure your knowledge base is not empty."}
 
         # Calculate actual retrieval metadata
-        retrieved_chunk_count = len(policy_chunks) + len(regulation_chunks)
+        retrieved_chunk_count = len(policy_res["documents"]) + len(regulation_res["documents"])
 
         filenames = set()
         for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
@@ -138,8 +139,6 @@ def retrieve_documents(state: WorkflowState) -> WorkflowState:
 
         return {
             **state,
-            "policy_chunks": policy_chunks,
-            "regulation_chunks": regulation_chunks,
             "sources": sources,
             "retrieved_chunk_count": retrieved_chunk_count,
             "files_used": files_used,

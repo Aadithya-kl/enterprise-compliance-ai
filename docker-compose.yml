@@ -23,7 +23,7 @@ services:
       - mcp_docs:/app/mcp_documents
       - ./backend/compliance-ai-498415-870bf0a6da98.json:/app/credentials/service-account.json:ro
     depends_on: []
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -41,7 +41,7 @@ services:
       - "80:80"
     depends_on:
       - backend
-    restart: unless-stopped
+    restart: always
 
 volumes:
   uploads:

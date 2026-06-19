@@ -33,11 +33,23 @@ class QuestionRequest(BaseModel):
     selected_files: Optional[list[str]] = None
 
 
+class RetrievalDiagnostics(BaseModel):
+    strategy: str
+    similarity: Optional[float] = None
+    distribution: dict[str, int]
+    deduplication: Optional[int] = None
+    coverage: str
+    documents_searched: int
+    documents_used: int
+    total_chunks: int
+
+
 class QuestionResponse(BaseModel):
     question: str
     answer: str
     sources: list[dict]
-    diagnostics: dict | None = None
+    diagnostics: Optional[RetrievalDiagnostics] = None
+    suggested_questions: Optional[list[str]] = None
 
 
 class AnalysisResponse(BaseModel):

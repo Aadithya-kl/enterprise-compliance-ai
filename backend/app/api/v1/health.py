@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.mcp.google_drive import GoogleDriveMCPSource
 from app.mcp.notion import NotionMCPSource
 from app.core.logging import get_logger
+from app.services.ingestion import get_collection_count
 
 router = APIRouter(prefix="/health", tags=["System Health"])
 logger = get_logger(__name__)
@@ -15,8 +16,9 @@ def health_check(db: Session = Depends(get_db)):
     """Return detailed health status of all core components and external integrations."""
     health = {
         "database": "unhealthy",
-        "chromadb": "unhealthy",
-        "ollama": "unhealthy",
+        "qdrant": "unhealthy",
+        "supabase": "unhealthy",
+        "llm": "unhealthy",
         "google_drive": "unhealthy",
         "notion": "unhealthy",
         "backend": "healthy",
@@ -30,24 +32,34 @@ def health_check(db: Session = Depends(get_db)):
     except Exception as exc:
         logger.error(f"Health Check - DB Error: {exc}")
 
-    # 2. ChromaDB
+    # 2. Qdrant
     try:
-        from app.services.rag_service import _collection
-        _collection.count()
-        health["chromadb"] = "healthy"
-    except Exception as exc:
-        logger.error(f"Health Check - ChromaDB Error: {exc}")
 
-    # 3. Ollama
-    try:
-        import requests
-        resp = requests.get(settings.OLLAMA_BASE_URL, timeout=2)
-        if resp.status_code == 200:
-            health["ollama"] = "healthy"
-        else:
-            logger.error(f"Health Check - Ollama Error: Non-200 status code {resp.status_code}")
+        get_collection_count()
+        health["qdrant"] = "healthy"
     except Exception as exc:
-        logger.error(f"Health Check - Ollama Error: {exc}")
+        logger.error(f"Health Check - Qdrant Error: {exc}")
+
+    # 3. Supabase Storage
+    try:
+        from app.services.supabase_storage import supabase_storage_service
+        if supabase_storage_service.is_configured():
+            health["supabase"] = "healthy"
+        else:
+            health["supabase"] = "not_configured"
+    except Exception as exc:
+        logger.error(f"Health Check - Supabase Error: {exc}")
+
+    # 4. LLM (Gemini)
+    try:
+        from app.core.llm import check_llm_health
+        if check_llm_health():
+            health["llm"] = "healthy"
+        else:
+            health["llm"] = "unhealthy"
+            logger.error("Health Check - Gemini Error: Client not initialized")
+    except Exception as exc:
+        logger.error(f"Health Check - Gemini Error: {exc}")
 
     # 4. Google Drive MCP
     try:

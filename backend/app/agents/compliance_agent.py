@@ -35,23 +35,10 @@ class ComplianceAgent(BaseAgent):
                                   risk, compliance_score, violation_count,
                                   audit_timestamp, auditor
         """
-        policy_chunks: list[str] = context.get("policy_chunks", [])
-        regulation_chunks: list[str] = context.get("regulation_chunks", [])
+        selected_files: list[str] | None = context.get("selected_files", None)
+        logger.info(f"{self.name}: analyzing using Map-Reduce for selected files: {selected_files}")
 
-        if not policy_chunks:
-            logger.error(f"{self.name}: no policy_chunks in context")
-            return {"error": "ComplianceAgent requires policy_chunks in context."}
-
-        if not regulation_chunks:
-            logger.error(f"{self.name}: no regulation_chunks in context")
-            return {"error": "ComplianceAgent requires regulation_chunks in context."}
-
-        logger.info(
-            f"{self.name}: analysing {len(policy_chunks)} policy chunks "
-            f"against {len(regulation_chunks)} regulation chunks"
-        )
-
-        report = generate_compliance_report(policy_chunks, regulation_chunks)
+        report = generate_compliance_report(selected_files)
 
         if "raw_response" in report:
             logger.error(f"{self.name}: LLM returned unparseable output")

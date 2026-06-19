@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.compliance_violation import ComplianceViolation
 from app.models.audit_report import AuditReport
-from app.services.compliance_service import _call_ollama
+from app.services.compliance_service import _call_llm
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -301,7 +301,7 @@ Do not include any greeting or conversational filler. Output the executive summa
     try:
         if total_violations == 0:
             return "No audit logs or violations recorded yet for this period. Generate compliance reports or adjust the query filters to view trends."
-        return _call_ollama(context)
+        return _call_llm(context)
     except Exception as exc:
         logger.error(f"Failed to generate trend summary: {exc}")
         return "Failed to generate AI trend summary due to LLM timeout."

@@ -2,14 +2,14 @@
 
 Endpoints:
   POST /api/v1/documents/upload        — upload, ingest, and push to Google Drive
-  GET  /api/v1/documents/{type}/count  — count ChromaDB chunks by type
+  GET  /api/v1/documents/{type}/count  — count Qdrant chunks by type
   POST /api/v1/documents/ask           — RAG question answering
   POST /api/v1/documents/analyze       — narrative compliance gap analysis
   GET  /api/v1/documents/indexed-files — list all indexed filenames
 
 Upload pipeline (in order):
   1. Validate: extension + max file size + duplicate check.
-  2. Save:     Write bytes to local ./uploads/ directory.
+  2. Save:     Write bytes to Supabase Storage.
   3. Drive:    If configured, upload to Google Drive folder.
                - Deduplication: if a file with the same name exists in the folder,
                  reuse its metadata (drive_upload_status="duplicate").
@@ -17,18 +17,18 @@ Upload pipeline (in order):
                - drive_upload_status: "uploaded" | "duplicate" | "skipped" | "failed"
   4. Extract:  Parse text via format-appropriate extractor (PDF, DOCX, XLSX, etc.).
   5. Chunk:    Split text into overlapping windows.
-  6. Ingest:   Store chunks in ChromaDB with full provenance metadata:
+  6. Ingest:   Store chunks in Qdrant with full provenance metadata:
                - filename, document_type, source, file_hash
                - drive_file_id, drive_file_name, drive_web_view_link (when available)
   7. Respond:  Return UploadResponse including all Drive metadata fields.
 """
 
 import os
+import tempfile
 import uuid
 from typing import Optional
 
-import ollama as ollama_client
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, BackgroundTasks
 from fastapi import Query as QueryParam
 
 from app.core.config import settings
@@ -43,30 +43,101 @@ from app.schemas.document import (
     UploadResponse,
 )
 from app.services.compliance_service import analyze_compliance
+from app.services.supabase_storage import supabase_storage_service
 from app.services.drive_upload_service import (
     DriveUploadResult,
     UploadToGoogleDriveError,
     drive_upload_service,
 )
-from app.services.rag_service import (
+from app.services.ingestion import (
     chunk_text,
     compute_file_hash,
     check_duplicate,
     check_version_conflict,
     extract_text,
     extract_text_from_pdf,
+    store_document_chunks,
+)
+from app.services.generation import (
     generate_answer,
-    get_chunks_by_type,
+)
+from app.services.retrieval import (
+    get_document_chunks_by_type,
     get_indexed_files,
     retrieve_chunks,
-    store_document_chunks,
 )
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 logger = get_logger(__name__)
 
-os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
+
+
+def _process_document_background(
+    temp_path: str,
+    filename: str,
+    document_type: str,
+    file_hash: str,
+    supabase_path: str,
+    extra_metadata: dict,
+):
+    try:
+        # Google Drive upload (non-blocking)
+        if drive_upload_service.is_enabled():
+            try:
+                drive_result = drive_upload_service.upload_file(
+                    local_path=temp_path,
+                    filename=filename,
+                    document_type=document_type,
+                )
+                extra_metadata["source"] = "google_drive"
+                extra_metadata["drive_file_id"] = drive_result.file_id
+                if drive_result.web_view_link:
+                    extra_metadata["drive_web_view_link"] = drive_result.web_view_link
+                extra_metadata["drive_file_name"] = filename
+            except Exception as exc:
+                logger.warning(f"Drive upload failed for '{filename}': {exc}")
+
+        # Text extraction
+        text = extract_text(temp_path)
+        if not text.strip():
+            logger.error(f"No readable text extracted for {filename}")
+            return
+
+        # Chunking
+        chunks = chunk_text(text)
+
+        import re
+        doc_year = None
+        fn_match = re.search(r'\b(19|20)\d{2}\b', filename)
+        if fn_match:
+            doc_year = int(fn_match.group(1))
+        else:
+            text_match = re.search(r'\b(19|20)\d{2}\b', text[:2000])
+            if text_match:
+                doc_year = int(text_match.group(1))
+
+        if doc_year:
+            extra_metadata["year"] = doc_year
+
+        # Ingest to Qdrant
+        store_document_chunks(
+            chunks=chunks,
+            filename=filename,
+            document_type=document_type,
+            extra_metadata=extra_metadata,
+        )
+        logger.info(f"Background ingestion complete for {filename}")
+
+    except Exception as proc_exc:
+        logger.error(f"Background processing failed for {filename}. Rolling back Supabase upload. Error: {proc_exc}")
+        supabase_storage_service.delete_file(supabase_path)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove temp file {temp_path}: {e}")
 
 @router.post(
     "/upload",
@@ -75,6 +146,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     summary="Upload and ingest a document",
 )
 async def upload_document(
+    background_tasks: BackgroundTasks,
     document_type: str = QueryParam(
         ...,
         description="Document category: 'policy', 'regulation', or 'general'",
@@ -88,29 +160,21 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Full document ingestion pipeline:
+    Full document ingestion pipeline (Supabase Migration Phase 3):
 
-    1. Save file locally under UPLOAD_DIR.
-    2. Check for duplicates via SHA256 hash. If duplicate, return early.
-    3. If Google Drive is configured, upload the file to the Drive folder.
-       Duplicate filenames are detected before upload — no duplicate files
-       are created in Drive. The response always reflects the true Drive state.
-    4. Extract text via format-aware extractor, chunk it, and persist to
-       ChromaDB with full provenance metadata.
-    5. Return UploadResponse with Drive metadata for immediate frontend display.
-
-    Google Drive status values:
-      "uploaded"  — file pushed to Drive successfully.
-      "duplicate" — file with this name already exists in Drive; reused.
-      "skipped"   — Drive is not configured or disabled.
-      "failed"    — Drive upload attempted but failed; document saved locally.
+    1. Save file temporarily via NamedTemporaryFile.
+    2. Check for duplicates via SHA256 hash. If duplicate, clean up and return early.
+    3. Upload file to Supabase Storage (primary persistence).
+    4. If Google Drive is configured, upload the file to the Drive folder.
+    5. Extract text via format-aware extractor, chunk it, and persist to
+       Qdrant Cloud with full provenance metadata.
+    6. Ensure rollback of Supabase object and tempfile deletion if extraction/chunking fails.
     """
     logger.info(
         f"Upload request: filename={file.filename!r} type={document_type} "
         f"user_id={current_user.id}"
     )
 
-    # ---- Validation: file extension ----
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -127,8 +191,8 @@ async def upload_document(
             ),
         )
 
-    content = await file.read()
-    size_mb = len(content) / (1024 * 1024)
+    content_bytes = await file.read()
+    size_mb = len(content_bytes) / (1024 * 1024)
     if size_mb > settings.MAX_UPLOAD_SIZE_MB:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -139,165 +203,93 @@ async def upload_document(
             ),
         )
 
-    # ---- Step 1: Save locally ----
-    file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as fh:
-        fh.write(content)
-    logger.info(f"Saved locally: {file_path} ({size_mb:.2f} MB)")
+    # Use NamedTemporaryFile
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
+    temp_path = temp_file.name
+    try:
+        temp_file.write(content_bytes)
+        temp_file.close()
 
-    # ---- Step 1b: Duplicate detection via SHA256 ----
-    file_hash = compute_file_hash(file_path)
-    dup_info = check_duplicate(file_hash)
+        # Duplicate detection
+        file_hash = compute_file_hash(temp_path)
+        dup_info = check_duplicate(file_hash)
 
-    if dup_info["is_duplicate"]:
-        replace_mode = replace
-        if not replace_mode:
-            # Check for version conflict (same name, different hash)
-            version_info = check_version_conflict(file.filename, file_hash)
-            if version_info["is_version_conflict"]:
+        if dup_info["is_duplicate"]:
+            replace_mode = replace
+            if not replace_mode:
+                version_info = check_version_conflict(file.filename, file_hash)
+                if version_info["is_version_conflict"]:
+                    return UploadResponse(
+                        status="version_conflict",
+                        filename=file.filename,
+                        document_type=document_type,
+                        characters=0,
+                        chunks=0,
+                        file_hash=file_hash,
+                        existing_filename=version_info.get("existing_filename"),
+                        message=(
+                            f"A different version of '{file.filename}' is already indexed. "
+                            f"Re-upload with replace=true to update, or rename the file."
+                        ),
+                    )
                 return UploadResponse(
-                    status="version_conflict",
+                    status="duplicate",
                     filename=file.filename,
                     document_type=document_type,
                     characters=0,
                     chunks=0,
                     file_hash=file_hash,
-                    existing_filename=version_info.get("existing_filename"),
-                    message=(
-                        f"A different version of '{file.filename}' is already indexed. "
-                        f"Re-upload with replace=true to update, or rename the file."
-                    ),
+                    existing_filename=dup_info.get("existing_filename"),
+                    message=f"Document already indexed (identical to '{dup_info.get('existing_filename', 'unknown')}').",
                 )
-            return UploadResponse(
-                status="duplicate",
-                filename=file.filename,
-                document_type=document_type,
-                characters=0,
-                chunks=0,
-                file_hash=file_hash,
-                existing_filename=dup_info.get("existing_filename"),
-                message=f"Document already indexed (identical to '{dup_info.get('existing_filename', 'unknown')}').",
-            )
-        else:
-            logger.info(f"Replace mode: re-ingesting '{file.filename}' (hash={file_hash[:12]}...)")
+            else:
+                logger.info(f"Replace mode: re-ingesting '{file.filename}'")
 
-    # ---- Step 2: Google Drive upload (non-blocking) ----
-    drive_result: Optional[DriveUploadResult] = None
-    drive_upload_status = "skipped"
+        # Upload to Supabase
+        supabase_path = f"{document_type}/{file.filename}"
+        supabase_upload_success = supabase_storage_service.upload_file(temp_path, supabase_path)
+        if not supabase_upload_success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to upload document to Supabase Storage."
+            )
 
-    if drive_upload_service.is_enabled():
-        try:
-            drive_result = drive_upload_service.upload_file(
-                local_path=file_path,
-                filename=file.filename,
-                document_type=document_type,
-            )
-            drive_upload_status = "duplicate" if drive_result.was_duplicate else "uploaded"
-            logger.info(
-                f"Drive result: {drive_upload_status} — "
-                f"file_id={drive_result.file_id} "
-                f"link={drive_result.web_view_link!r}"
-            )
-        except UploadToGoogleDriveError as exc:
-            drive_upload_status = "failed"
-            logger.warning(
-                f"Drive upload failed for '{file.filename}' — "
-                f"document saved locally only. Reason: {exc}"
-            )
-        except Exception as exc:
-            drive_upload_status = "failed"
-            logger.error(
-                f"Unexpected error during Drive upload for '{file.filename}': {exc}",
-                exc_info=True,
-            )
-    else:
-        logger.debug(
-            f"Google Drive not configured — skipping Drive upload for '{file.filename}'."
+        # Qdrant metadata tracking
+        extra_metadata: dict = {
+            "source": "local_upload",
+            "file_hash": file_hash,
+            "supabase_storage_path": supabase_path,
+            "storage_provider": "supabase"
+        }
+
+        background_tasks.add_task(
+            _process_document_background,
+            temp_path=temp_path,
+            filename=file.filename,
+            document_type=document_type,
+            file_hash=file_hash,
+            supabase_path=supabase_path,
+            extra_metadata=extra_metadata
         )
 
-    # ---- Step 3: Text extraction (format-aware) ----
-    text = extract_text(file_path)
-    if not text.strip():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"No readable text could be extracted from '{file.filename}'. "
-                f"The file may be empty, corrupted, or require OCR tools not installed on the server."
-            ),
+        return UploadResponse(
+            status="processing",
+            filename=file.filename,
+            document_type=document_type,
+            characters=0,
+            chunks=0,
+            file_hash=file_hash,
+            existing_filename=None,
+            message="Document accepted and is processing in the background.",
+            drive_upload_status="pending",
+            drive_file_id=None,
+            drive_web_view_link=None,
         )
 
-    # ---- Step 4: Chunking ----
-    chunks = chunk_text(text)
-
-    # ---- Step 5: ChromaDB ingestion with full provenance metadata ----
-    #
-    # Metadata stored per chunk:
-    #   filename        : original local filename (used as the dedup key)
-    #   document_type   : "policy" | "regulation" | "general"
-    #   source          : "google_drive" if pushed to Drive, else "local_upload"
-    #   drive_file_id   : Drive file ID (enables MCP incremental sync dedup)
-    #   drive_file_name : Filename as it appears in Drive
-    #   drive_web_view_link: Browser link to the file in Drive
-    #
-    extra_metadata: dict = {
-        "source": "google_drive" if drive_result else "local_upload",
-        "file_hash": file_hash,
-    }
-    
-    # Extract year from filename or text content
-    import re
-    doc_year = None
-    if file.filename:
-        fn_match = re.search(r'\b(19|20)\d{2}\b', file.filename)
-        if fn_match:
-            doc_year = fn_match.group(0)
-            
-    if not doc_year and text:
-        snippet = text[:4000].lower()
-        patterns = [
-            r'\b(?:annual report|policy|fiscal year|fy|year|date|effective|version|copyright|created|issued)\b\s*[:\-]?\s*\b((?:19|20)\d{2})\b',
-            r'\b((?:19|20)\d{2})\b'
-        ]
-        for pattern in patterns:
-            txt_matches = re.findall(pattern, snippet)
-            if txt_matches:
-                doc_year = txt_matches[0]
-                break
-                
-    if doc_year:
-        extra_metadata["year"] = doc_year
-        logger.info(f"Extracted year '{doc_year}' for metadata of '{file.filename}'")
-
-    if drive_result:
-        extra_metadata["drive_file_id"] = drive_result.file_id
-        extra_metadata["drive_file_name"] = drive_result.file_name
-        extra_metadata["drive_web_view_link"] = drive_result.web_view_link
-
-    store_document_chunks(
-        chunks,
-        filename=file.filename,
-        document_type=document_type,
-        extra_metadata=extra_metadata,
-    )
-
-    logger.info(
-        f"Upload complete: {file.filename!r} | "
-        f"{len(chunks)} chunks | {len(text)} chars | "
-        f"drive={drive_upload_status}"
-    )
-
-    return UploadResponse(
-        status="ingested",
-        filename=file.filename,
-        document_type=document_type,
-        characters=len(text),
-        chunks=len(chunks),
-        file_hash=file_hash,
-        drive_upload_status=drive_upload_status,
-        drive_file_id=drive_result.file_id if drive_result else None,
-        drive_file_name=drive_result.file_name if drive_result else None,
-        drive_web_view_link=drive_result.web_view_link if drive_result else None,
-    )
+    except Exception as exc:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise exc
 
 
 @router.get(
@@ -309,7 +301,7 @@ def get_document_count(
     document_type: str,
     current_user: User = Depends(get_current_user),
 ):
-    docs = get_chunks_by_type(document_type)
+    docs = get_document_chunks_by_type(document_type)
     return DocumentCountResponse(
         document_type=document_type,
         documents_found=len(docs),
@@ -371,7 +363,7 @@ def ask_question(
         source_detail: dict[str, dict] = {}  # per-file aggregation
 
         for doc, meta, dist in zip(chunks, metadatas, distances):
-            # FIX: Do NOT overwrite meta — it already contains valid ChromaDB metadata
+            # FIX: Do NOT overwrite meta — it already contains valid Qdrant metadata
             if not meta:
                 meta = {}
             filename = meta.get("filename", "Unknown")
@@ -408,28 +400,44 @@ def ask_question(
             scores = detail.pop("confidence_scores")
             detail["confidence"] = round(sum(scores) / len(scores), 1) if scores else 0.0
             enhanced_sources.append(detail)
+            
+        # ---- Coverage Score & Diagnostics Injection ----
+        total_searched = len(payload.selected_files) if payload.selected_files else len(results.get("matched_filenames", []))
+        if total_searched == 0:
+            total_searched = 1
+        
+        used_files_count = len(source_detail)
+        coverage_ratio = used_files_count / total_searched
+        
+        if coverage_ratio > 0.8:
+            coverage_score = "High"
+        elif coverage_ratio >= 0.4:
+            coverage_score = "Medium"
+        else:
+            coverage_score = "Low"
+            
+        from app.schemas.document import RetrievalDiagnostics
+        
+        diagnostics = RetrievalDiagnostics(
+            strategy=results.get("retrieval_mode", "full_knowledge_base"),
+            similarity=None, # TBD or from distances
+            distribution=results.get("retrieved_chunks_per_filename", {}),
+            deduplication=None, # TBD or computed
+            coverage=f"{coverage_score} ({(coverage_ratio*100):.1f}%)",
+            documents_searched=total_searched,
+            documents_used=used_files_count,
+            total_chunks=results.get("total_chunks_retrieved", 0)
+        )
 
-        diagnostics = {
-            "matched_files": results.get("matched_filenames", []),
-            "selected_files": payload.selected_files or [],
-            "retrieved_chunks_per_file": results.get("retrieved_chunks_per_filename", {}),
-            "total_chunks": results.get("total_chunks_retrieved", 0),
-            "retrieval_mode": (
-                "filtered" if payload.selected_files else
-                results.get("retrieval_mode", "full_knowledge_base")
-            ),
-        }
-
-        # ---- Check Ollama availability before LLM call ----
-        try:
-            ollama_client.list()
-        except Exception as ollama_err:
-            logger.error(f"Ollama is not reachable: {ollama_err}")
+        # ---- Check LLM availability before LLM call ----
+        from app.core.llm import check_llm_health
+        if not check_llm_health():
+            logger.error("LLM is not reachable")
             return QuestionResponse(
                 question=payload.question,
                 answer=(
-                    "The AI language model (Ollama) is currently unavailable. "
-                    "Please ensure Ollama is running and try again."
+                    "The AI language model is currently unavailable. "
+                    "Please ensure GEMINI_API_KEY is valid and try again."
                 ),
                 sources=enhanced_sources,
                 diagnostics=diagnostics,
@@ -441,12 +449,34 @@ def ask_question(
             context_chunks=formatted_chunks,
             comparison_mode=(results.get("retrieval_mode") == "multi_document_comparison"),
         )
-
+            
+        # ---- Dynamic Suggested Questions (Sprint B) ----
+        suggested_questions = []
+        if payload.selected_files:
+            file_str = " ".join(payload.selected_files).lower()
+            if "risk" in file_str or "register" in file_str:
+                suggested_questions.extend(["Show high-risk vendors", "Summarize vendor risks"])
+            if "security" in file_str:
+                suggested_questions.extend(["Summarize security controls", "Show MFA requirements"])
+            if "continuity" in file_str or "disaster" in file_str or "recovery" in file_str:
+                suggested_questions.extend(["Summarize recovery strategies", "Show continuity testing requirements"])
+            if len(payload.selected_files) > 1:
+                suggested_questions.extend(["Summarize access controls", "Compare incident response obligations"])
+        
+        # Fallback defaults if none matched
+        if not suggested_questions:
+            suggested_questions = [
+                "What are the primary compliance risks identified?",
+                "Summarize the key takeaways from these documents.",
+                "What actions are required for compliance?"
+            ]
+            
         return QuestionResponse(
             question=payload.question,
             answer=answer,
             sources=enhanced_sources,
             diagnostics=diagnostics,
+            suggested_questions=list(set(suggested_questions))[:4]
         )
 
     except HTTPException:
@@ -460,7 +490,7 @@ def ask_question(
                 "Please try again or contact support if the issue persists."
             ),
             sources=[],
-            diagnostics={"error": str(exc)},
+            diagnostics=None,
         )
 
 
@@ -471,7 +501,7 @@ def ask_question(
 def list_indexed_files(
     current_user: User = Depends(get_current_user),
 ):
-    """Return a list of all unique filenames currently indexed in ChromaDB."""
+    """Return a list of all unique filenames currently indexed in Qdrant."""
     files = get_indexed_files()
     return {"files": files, "total": len(files)}
 
@@ -486,8 +516,8 @@ def analyze_documents(current_user: User = Depends(get_current_user)):
     Produce a free-text compliance analysis comparing uploaded policy
     documents against uploaded regulation documents.
     """
-    policy_chunks = get_chunks_by_type("policy")
-    regulation_chunks = get_chunks_by_type("regulation")
+    policy_chunks = get_document_chunks_by_type("policy")
+    regulation_chunks = get_document_chunks_by_type("regulation")
 
     if not policy_chunks:
         raise HTTPException(

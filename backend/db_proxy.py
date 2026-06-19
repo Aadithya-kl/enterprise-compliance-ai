@@ -57,15 +57,7 @@ def main():
         daemon=True
     )
     
-    # Proxy 2: Ollama Localhost
-    ollama_thread = threading.Thread(
-        target=run_proxy,
-        args=(11435, "127.0.0.1", 11434, False),
-        daemon=True
-    )
-    
     db_thread.start()
-    ollama_thread.start()
     
     try:
         while True:

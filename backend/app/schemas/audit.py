@@ -81,4 +81,4 @@ class ComplianceReportResponse(BaseModel):
     retrieved_chunk_count: Optional[int] = None
     files_used: Optional[List[str]] = None
     retrieval_mode: Optional[str] = None
-
+    metrics: Optional[dict] = None

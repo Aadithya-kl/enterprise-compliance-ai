@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Legend
@@ -6,10 +6,12 @@ import {
 import { complianceApi } from '../api/compliance'
 import { integrationsApi } from '../api/integrations'
 import { scoreColor, riskBadgeClass } from '../utils/formatters'
+import KnowledgeSyncCenter from '../components/dashboard/KnowledgeSyncCenter'
 
 const RISK_COLORS = { High: '#dc2626', Medium: '#d97706', Low: '#16a34a' }
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient()
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: complianceApi.getDashboardStats,
@@ -81,51 +83,23 @@ export default function DashboardPage() {
           <div className="space-y-3">
             <HealthItem label="FastAPI Backend" status={health?.backend} />
             <HealthItem label="PostgreSQL DB" status={health?.database} />
-            <HealthItem label="ChromaDB" status={health?.chromadb} />
-            <HealthItem label="Ollama LLM" status={health?.ollama} />
+            <HealthItem label="Qdrant Cloud" status={health?.qdrant} />
+            <HealthItem label="Gemini 2.5 Flash" status={health?.llm} />
+            <HealthItem label="Supabase Storage" status={health?.supabase} />
             <HealthItem label="Google Drive MCP" status={health?.google_drive} />
             <HealthItem label="Notion MCP" status={health?.notion} />
           </div>
         </div>
-        <div className="card p-5 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
-            Knowledge Sources Metrics
+        <div className="card p-5 lg:col-span-2 bg-gray-50/50 dark:bg-gray-900/10">
+          <h2 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-widest mb-4">
+            Knowledge Sync Center
           </h2>
-          <div className="table-container rounded-none border-0 overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Source</th>
-                  <th>Status</th>
-                  <th>Documents</th>
-                  <th>Chunks</th>
-                  <th>Last Sync</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-                {['local_files', 'google_drive', 'notion'].map((source) => {
-                  const stat = mcpStats?.[source]
-                  return (
-                    <tr key={source}>
-                      <td className="capitalize font-medium text-gray-900 dark:text-white">
-                        {source.replace('_', ' ')}
-                      </td>
-                      <td>
-                        {stat?.sources_connected ? (
-                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full">Connected</span>
-                        ) : (
-                          <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 rounded-full">Not Configured</span>
-                        )}
-                      </td>
-                      <td>{stat?.total_documents ?? 0}</td>
-                      <td>{stat?.total_chunks ?? 0}</td>
-                      <td className="text-gray-500 text-xs">{stat?.last_sync ?? 'Never'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <KnowledgeSyncCenter 
+            stats={mcpStats || {}} 
+            onSyncComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ['mcp-stats'] })
+            }} 
+          />
         </div>
       </div>
 
@@ -176,8 +150,12 @@ export default function DashboardPage() {
             Risk Distribution
           </h2>
           {distribution.length === 0 ? (
-            <div className="h-[220px] flex items-center justify-center text-sm text-gray-400">
-              No data yet
+            <div className="h-[220px] flex flex-col items-center justify-center text-center space-y-2">
+              <div className="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
+              </div>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-200">No Risk Data</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">Upload documents and run an audit to populate this chart.</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
@@ -223,8 +201,12 @@ export default function DashboardPage() {
             Monthly Audit Volume
           </h2>
           {trend.length === 0 ? (
-            <div className="h-[180px] flex items-center justify-center text-sm text-gray-400">
-              No data yet
+            <div className="h-[180px] flex flex-col items-center justify-center text-center space-y-2">
+               <div className="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
+              </div>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-200">No Audits Run</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">Generate compliance reports to see historical volume trends.</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
@@ -264,8 +246,14 @@ export default function DashboardPage() {
               <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                 {recentAudits.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center text-gray-400 py-8">
-                      No audit reports yet
+                    <td colSpan={5} className="py-12">
+                      <div className="flex flex-col items-center justify-center text-center space-y-2">
+                         <div className="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-200">No Recent Audit Reports</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Run a query in the Ask Question tab to generate your first audit finding.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (

@@ -9,10 +9,15 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.services.compliance_service import _call_ollama
-from app.services.rag_service import retrieve_chunks, generate_answer
+from app.services.compliance_service import _call_llm
 from app.services.analytics_service import generate_ai_trend_summary
 from app.agents.workflow import run_compliance_workflow
+from app.services.retrieval import (
+    retrieve_chunks,
+)
+from app.services.generation import (
+    generate_answer,
+)
 
 logger = get_logger(__name__)
 
@@ -41,7 +46,7 @@ Query: "{query}"
 CRITICAL: Return ONLY one of these strings: "trend_analysis", "compliance_analysis", or "rag_question". Do not include any other text, punctuation, or markdown.
 """
     try:
-        response = _call_ollama(prompt).strip().lower()
+        response = _call_llm(prompt).strip().lower()
         if "trend" in response:
             return "trend_analysis"
         if "compliance" in response or "audit" in response:

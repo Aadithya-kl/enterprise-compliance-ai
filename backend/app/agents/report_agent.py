@@ -6,7 +6,7 @@ and structured recommendations.
 
 The executive summary is generated deterministically from the structured
 compliance_analysis and risk_assessment data without an additional LLM call.
-This eliminates one blocking Ollama round-trip (~30-50s) and ensures the
+This eliminates one blocking LLM round-trip (~30-50s) and ensures the
 workflow completes within the frontend timeout window.
 """
 

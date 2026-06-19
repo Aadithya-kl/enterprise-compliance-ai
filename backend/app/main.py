@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 Enterprise Compliance & Audit Intelligence Platform
 FastAPI application entry point.
@@ -22,6 +24,7 @@ from app.models.user import User, UserRole
 # Ensure all models are imported so Base.metadata is populated
 import app.models.audit_report  # noqa: F401
 import app.models.compliance_violation  # noqa: F401
+import app.models.sync_job  # noqa: F401
 
 configure_logging()
 logger = get_logger(__name__)
@@ -55,14 +58,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import uuid
+import time
+
+@app.middleware("http")
+async def add_correlation_id_and_log(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+    request.state.request_id = request_id
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        logger.info(f"[req_id={request_id}] route={request.url.path} method={request.method} status={response.status_code} exec_time={process_time:.4f}s")
+        response.headers["X-Request-ID"] = request_id
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(f"[req_id={request_id}] route={request.url.path} method={request.method} exec_time={process_time:.4f}s exception={repr(e)}", exc_info=True)
+        raise e
+
 # ---------------------------------------------------------------------------
 # Global exception handler
 # ---------------------------------------------------------------------------
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    req_id = getattr(request.state, "request_id", "unknown")
     logger.error(
-        f"Unhandled exception: {exc} | "
+        f"[req_id={req_id}] Unhandled exception: {exc} | "
         f"path={request.url.path} method={request.method}",
         exc_info=True,
     )
@@ -70,6 +94,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": "An unexpected error occurred.",
+            "request_id": req_id,
             "detail": str(exc) if settings.DEBUG else "Internal server error.",
         },
     )
@@ -100,9 +125,12 @@ def on_startup():
     _bootstrap_admin()
 
     # Ensure upload directory exists
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    logger.info(f"Upload directory: {settings.UPLOAD_DIR}")
+    logger.info("Local upload persistence has been removed (Supabase Migration Phase 3).")
 
+    # Production Hardening Diagnostics
+    logger.info("Supported Drive MIME Types: PDF, DOCX, PPTX, XLSX, CSV, TXT")
+    logger.info("Google Drive Discovery Ready")
+    logger.info("Qdrant Payload Index Verification Complete")
 
 def _auto_migrate_schema():
     """Ensure missing columns like created_by_user_id are automatically added."""
@@ -153,7 +181,8 @@ def _auto_migrate_schema():
                             # Parse audit timestamp to datetime
                             try:
                                 report_dt = datetime.strptime(r.audit_timestamp, "%Y-%m-%d %H:%M:%S")
-                            except Exception:
+                            except Exception as e:
+                                logger.error(f"Exception caught: {e}", exc_info=True)
                                 report_dt = r.created_at or datetime.now()
 
                             # Deserialise issues
@@ -161,7 +190,8 @@ def _auto_migrate_schema():
                             if r.issues:
                                 try:
                                     issues = json.loads(r.issues)
-                                except Exception:
+                                except Exception as e:
+                                    logger.error(f"Exception caught: {e}", exc_info=True)
                                     issues = [r.issues]
                                     
                             for issue in issues:

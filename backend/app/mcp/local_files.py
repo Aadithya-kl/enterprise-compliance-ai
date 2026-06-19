@@ -5,6 +5,7 @@ import os
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.mcp.base import MCPDocument, MCPSource
+from app.services.ingestion import extract_text_from_pdf
 
 logger = get_logger(__name__)
 
@@ -42,7 +43,7 @@ class LocalFilesMCPSource(MCPSource):
             logger.warning(f"Local files MCP: directory not found: {directory}")
             return []
 
-        from app.services.rag_service import extract_text_from_pdf
+
 
         documents: list[MCPDocument] = []
         for filename in os.listdir(directory):

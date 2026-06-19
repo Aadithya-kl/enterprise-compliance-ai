@@ -5,6 +5,7 @@ Designed for Supabase (PostgreSQL) with connection pool hardening.
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -82,13 +83,15 @@ def get_db() -> Session:
     db: Session = SessionLocal()
     try:
         yield db
-    except Exception:
+    except Exception as e:
+        logger.error(f"Exception caught: {e}", exc_info=True)
         db.rollback()
         raise
     finally:
         db.close()
 
 
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
 def verify_db_connection() -> bool:
     """
     Confirm the database is reachable.
