@@ -1,4 +1,4 @@
-# 🛡️ Enterprise Compliance AI
+#  Enterprise Compliance AI
 
 ### Autonomous Enterprise Compliance & Audit Intelligence Platform
 
@@ -6,7 +6,7 @@ An AI-powered compliance intelligence platform that automates policy analysis, r
 
 ---
 
-## 🚀 Live Deployment
+##  Live Deployment
 
 **Frontend (Vercel)**
 https://enterprise-compliance-ai-swart.vercel.app
@@ -19,7 +19,7 @@ https://enterprise-compliance-ai-production.up.railway.app/docs
 
 ---
 
-## 📌 Overview
+##  Overview
 
 Enterprise organizations store compliance documents across multiple systems including Google Drive, Notion, internal repositories, and policy management platforms.
 
@@ -36,9 +36,9 @@ Enterprise Compliance AI automates this process through:
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-### 🤖 AI Compliance Analysis
+###  AI Compliance Analysis
 
 * Regulatory gap assessment
 * Compliance score generation
@@ -46,7 +46,7 @@ Enterprise Compliance AI automates this process through:
 * Violation detection
 * AI-generated remediation recommendations
 
-### 📚 Multi-Source Knowledge Sync
+###  Multi-Source Knowledge Sync
 
 * Google Drive Integration
 * Notion Workspace Integration
@@ -54,14 +54,14 @@ Enterprise Compliance AI automates this process through:
 * Incremental synchronization
 * Duplicate detection
 
-### 🔍 Retrieval Augmented Generation (RAG)
+###  Retrieval Augmented Generation (RAG)
 
 * Semantic document search
 * Context-aware compliance analysis
 * Source attribution
 * Intelligent document retrieval
 
-### 📊 Executive Dashboard
+###  Executive Dashboard
 
 * Compliance KPIs
 * Audit metrics
@@ -69,14 +69,14 @@ Enterprise Compliance AI automates this process through:
 * System health monitoring
 * Knowledge source statistics
 
-### 🔐 Enterprise Security
+###  Enterprise Security
 
 * JWT Authentication
 * Role-Based Access Control (RBAC)
 * User Management
 * Protected API Endpoints
 
-### 📄 Audit Reporting
+###  Audit Reporting
 
 * Compliance Reports
 * Risk Reports
@@ -86,7 +86,7 @@ Enterprise Compliance AI automates this process through:
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ```mermaid
 graph TD
@@ -120,7 +120,7 @@ K --> L[Audit Report]
 
 ---
 
-## 🛠 Technology Stack
+##  Technology Stack
 
 ### Frontend
 
@@ -162,7 +162,7 @@ K --> L[Audit Report]
 
 ---
 
-## 📈 Core Workflow
+##  Core Workflow
 
 1. Documents are uploaded or synced from external sources.
 2. Content is extracted and chunked.
@@ -200,7 +200,7 @@ Add screenshot here
 
 ---
 
-## 🔗 API Endpoints
+##  API Endpoints
 
 | Endpoint                 | Method | Description           |
 | ------------------------ | ------ | --------------------- |
@@ -214,7 +214,7 @@ Add screenshot here
 
 ---
 
-## 🎯 Future Roadmap
+##  Future Roadmap
 
 * Microsoft SharePoint Integration
 * Slack & Microsoft Teams Alerts
@@ -225,7 +225,7 @@ Add screenshot here
 
 ---
 
-## 👥 Team
+##  Team
 
 ### Aadithya K L
 
@@ -236,7 +236,7 @@ Add screenshot here
 
 ---
 
-## ⭐ Project Status
+##  Project Status
 
 Production Deployment Active
 
