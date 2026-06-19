@@ -227,7 +227,7 @@ Add screenshot here
 
 ##  Team
 
-### Aadithya K L
+### K L Aadithya 
 
 ### Shrinidhi
 
