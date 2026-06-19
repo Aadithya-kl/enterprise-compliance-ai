@@ -29,6 +29,7 @@ from app.services.compliance_service import (
 from app.services.retrieval import (
     get_document_chunks_by_type,
     get_chunks_with_metadata_by_type,
+    get_all_chunks_for_files,
 )
 from app.schemas.document import ComplianceReportRequest
 from typing import Optional
@@ -55,19 +56,35 @@ def create_compliance_report(
     3. Persist to Supabase and return the saved record
     """
     selected_files = payload.selected_files if payload else None
-    policy_res = get_chunks_with_metadata_by_type("policy", selected_files=selected_files)
-    regulation_res = get_chunks_with_metadata_by_type("regulation", selected_files=selected_files)
+    
+    pre_retrieved_chunks = None
+    
+    if selected_files:
+        all_res = get_all_chunks_for_files(selected_files)
+        policy_chunks = []
+        regulation_chunks = []
+        pre_retrieved_chunks = all_res["documents"]
+        
+        logger.info(f"Compliance Report: {len(selected_files)} selected files")
+        logger.info(f"Retrieved {len(pre_retrieved_chunks)} chunks")
+        
+        types = set(m.get("document_type", "unknown") for m in all_res.get("metadatas", []))
+        logger.info(f"Document types found: {types}")
+        
+    else:
+        policy_res = get_chunks_with_metadata_by_type("policy")
+        regulation_res = get_chunks_with_metadata_by_type("regulation")
 
-    policy_chunks = policy_res["documents"]
-    regulation_chunks = regulation_res["documents"]
+        policy_chunks = policy_res["documents"]
+        regulation_chunks = regulation_res["documents"]
 
-    if not policy_chunks and not regulation_chunks:
+    if not policy_chunks and not regulation_chunks and not pre_retrieved_chunks:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No documents found for analysis. Please upload at least one document or verify your selection.",
         )
 
-    report = generate_compliance_report(selected_files)
+    report = generate_compliance_report(selected_files, pre_retrieved_chunks=pre_retrieved_chunks)
 
     if "raw_response" in report:
         logger.error(
@@ -95,18 +112,24 @@ def create_compliance_report(
     import json
 
     # Calculate actual retrieval metadata
-    retrieved_chunk_count = len(policy_chunks) + len(regulation_chunks)
-
     filenames = set()
-    for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
+    sources_dict = {}
+
+    if selected_files:
+        retrieved_chunk_count = len(all_res["documents"])
+        metadatas = all_res.get("metadatas", [])
+        retrieval_mode = "Filtered"
+    else:
+        retrieved_chunk_count = len(policy_chunks) + len(regulation_chunks)
+        metadatas = policy_res["metadatas"] + regulation_res["metadatas"]
+        retrieval_mode = "Global"
+
+    for meta in metadatas:
         if meta and meta.get("filename"):
             filenames.add(meta.get("filename"))
     files_used = list(filenames)
 
-    retrieval_mode = "Filtered" if selected_files else "Global"
-
-    sources_dict = {}
-    for meta in policy_res["metadatas"] + regulation_res["metadatas"]:
+    for meta in metadatas:
         if not meta or not meta.get("filename"):
             continue
         fname = meta.get("filename")
@@ -120,6 +143,7 @@ def create_compliance_report(
                 "drive_web_view_link": meta.get("drive_web_view_link")
             }
         sources_dict[fname]["chunks_used"] += 1
+        
     sources = list(sources_dict.values())
 
     return ComplianceReportResponse(
@@ -162,19 +186,30 @@ def assess_compliance_risk(
     No database write occurs.
     """
     selected_files = payload.selected_files if payload else None
-    policy_chunks = get_document_chunks_by_type("policy", selected_files=selected_files)
-    regulation_chunks = get_document_chunks_by_type("regulation", selected_files=selected_files)
+    
+    pre_retrieved_chunks = None
+    if selected_files:
+        all_res = get_all_chunks_for_files(selected_files)
+        pre_retrieved_chunks = all_res["documents"]
+        if not pre_retrieved_chunks:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No documents found for the selected files."
+            )
+    else:
+        policy_chunks = get_document_chunks_by_type("policy")
+        regulation_chunks = get_document_chunks_by_type("regulation")
 
-    if not policy_chunks or not regulation_chunks:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Both policy and regulation documents are required. "
-                "Upload both document types before running a risk assessment."
-            ),
-        )
+        if not policy_chunks or not regulation_chunks:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Both policy and regulation documents are required. "
+                    "Upload both document types before running a risk assessment."
+                ),
+            )
 
-    report = generate_compliance_report(selected_files)
+    report = generate_compliance_report(selected_files, pre_retrieved_chunks=pre_retrieved_chunks)
 
     if "raw_response" in report:
         raise HTTPException(

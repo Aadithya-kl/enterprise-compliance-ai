@@ -642,6 +642,38 @@ def extract_filenames_from_query(query: str, metadatas: list[dict]) -> list[str]
                 
     return list(matched)
 
+def _resolve_filenames(requested_files: list[str]) -> list[str]:
+    """Tolerant matching strategy to resolve requested filenames to actual DB filenames."""
+    if not requested_files:
+        return []
+        
+    actual_files = set()
+    from app.services.generation import get_indexed_files
+    indexed = get_indexed_files()
+    indexed_names = [f["filename"] for f in indexed if "filename" in f]
+    
+    for req in requested_files:
+        req_lower = req.lower()
+        if req in indexed_names:
+            actual_files.add(req)
+            continue
+            
+        req_normalized = req_lower.replace(" ", "_").replace("-", "_")
+        matched = False
+        for actual in indexed_names:
+            actual_lower = actual.lower()
+            actual_normalized = actual_lower.replace(" ", "_").replace("-", "_")
+            
+            base_actual = os.path.splitext(actual_normalized)[0]
+            if req_normalized in actual_normalized or req_normalized in base_actual or req_lower in actual_lower:
+                actual_files.add(actual)
+                matched = True
+        
+        if not matched:
+            actual_files.add(req)
+            
+    return list(actual_files)
+
 def _get_bm25_top_k(query: str, query_filter: Filter | None, k: int = 5):
     try:
         from rank_bm25 import BM25Okapi
@@ -655,6 +687,8 @@ def _get_bm25_top_k(query: str, query_filter: Filter | None, k: int = 5):
             return []
         
         corpus = [p.payload.get("document", "") for p in points if p.payload]
+        if not corpus:
+            return []
         tokenized_corpus = [doc.lower().split() for doc in corpus]
         bm25 = BM25Okapi(tokenized_corpus)
         tokenized_query = query.lower().split()
@@ -725,7 +759,7 @@ def retrieve_chunks(query: str, n_results: int = 10, selected_files: list[str] |
         rrf_k = 60
 
         # 3. Multi-Document Coverage & Hierarchical Search
-        search_targets = selected_files if selected_files else [None]
+        search_targets = _resolve_filenames(selected_files) if selected_files else [None]
         limit_per_target = max(5, adaptive_limit // len(search_targets))
 
         for target_file in search_targets:
@@ -824,9 +858,10 @@ def get_chunks_with_metadata_by_type(document_type: str, selected_files: list[st
         filters = [FieldCondition(key="document_type", match=MatchValue(value=document_type))]
         
         if selected_files:
-            file_conditions = [FieldCondition(key="filename", match=MatchValue(value=f)) for f in selected_files]
-            file_conditions.extend([FieldCondition(key="title", match=MatchValue(value=f)) for f in selected_files])
-            file_conditions.extend([FieldCondition(key="drive_file_name", match=MatchValue(value=f)) for f in selected_files])
+            resolved_files = _resolve_filenames(selected_files)
+            file_conditions = [FieldCondition(key="filename", match=MatchValue(value=f)) for f in resolved_files]
+            file_conditions.extend([FieldCondition(key="title", match=MatchValue(value=f)) for f in resolved_files])
+            file_conditions.extend([FieldCondition(key="drive_file_name", match=MatchValue(value=f)) for f in resolved_files])
             filters.append(Filter(should=file_conditions))
             
         points, _ = _client.scroll(
@@ -842,6 +877,35 @@ def get_chunks_with_metadata_by_type(document_type: str, selected_files: list[st
         }
     except Exception as exc:
         logger.error(f"Error getting chunks by type: {exc}", exc_info=True)
+        return {"documents": [], "metadatas": []}
+
+def get_all_chunks_for_files(filenames: list[str]) -> dict:
+    """Retrieve all chunks for the specified filenames regardless of document type."""
+    try:
+        if not filenames:
+            return {"documents": [], "metadatas": []}
+            
+        resolved_files = _resolve_filenames(filenames)
+            
+        file_conditions = [FieldCondition(key="filename", match=MatchValue(value=f)) for f in resolved_files]
+        file_conditions.extend([FieldCondition(key="title", match=MatchValue(value=f)) for f in resolved_files])
+        file_conditions.extend([FieldCondition(key="drive_file_name", match=MatchValue(value=f)) for f in resolved_files])
+        
+        qf = Filter(should=file_conditions)
+        
+        points, _ = _client.scroll(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            scroll_filter=qf,
+            with_payload=True,
+            limit=10000
+        )
+        
+        return {
+            "documents": [p.payload.get("document", "") for p in points if p.payload],
+            "metadatas": [p.payload for p in points if p.payload]
+        }
+    except Exception as exc:
+        logger.error(f"Error getting all chunks for files: {exc}", exc_info=True)
         return {"documents": [], "metadatas": []}
 
 def get_document_chunks_by_type(document_type: str, selected_files: list[str] | None = None) -> list[str]:
@@ -865,9 +929,10 @@ def retrieve_top_k_for_text(query_text: str, document_type: str, k: int, selecte
         filters = [FieldCondition(key="document_type", match=MatchValue(value=document_type))]
         
         if selected_files:
-            file_conditions = [FieldCondition(key="filename", match=MatchValue(value=f)) for f in selected_files]
-            file_conditions.extend([FieldCondition(key="title", match=MatchValue(value=f)) for f in selected_files])
-            file_conditions.extend([FieldCondition(key="drive_file_name", match=MatchValue(value=f)) for f in selected_files])
+            resolved_files = _resolve_filenames(selected_files)
+            file_conditions = [FieldCondition(key="filename", match=MatchValue(value=f)) for f in resolved_files]
+            file_conditions.extend([FieldCondition(key="title", match=MatchValue(value=f)) for f in resolved_files])
+            file_conditions.extend([FieldCondition(key="drive_file_name", match=MatchValue(value=f)) for f in resolved_files])
             filters.append(Filter(should=file_conditions))
             
         qf = Filter(must=filters)

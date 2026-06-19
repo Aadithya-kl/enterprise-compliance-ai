@@ -10,15 +10,20 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Initialize the Gemini client centrally
-try:
-    gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-except Exception as e:
-    logger.error(f"Failed to initialize Gemini client: {e}")
-    gemini_client = None
+def _get_gemini_client():
+    try:
+        from app.core.config import settings
+        import os
+        # Prioritize os environment to ensure reloads take effect
+        api_key = os.environ.get("GEMINI_API_KEY", settings.GEMINI_API_KEY)
+        return genai.Client(api_key=api_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Gemini client: {e}")
+        return None
 
 def check_llm_health() -> bool:
     """Verify connectivity to the LLM API."""
+    gemini_client = _get_gemini_client()
     if not gemini_client:
         return False
     try:
@@ -51,6 +56,7 @@ def generate_response(
     Returns:
         The generated text response.
     """
+    gemini_client = _get_gemini_client()
     if not gemini_client:
         raise RuntimeError("Gemini client is not initialized. Ensure GEMINI_API_KEY is set.")
 
@@ -66,5 +72,13 @@ def generate_response(
         )
         return response.text
     except Exception as exc:
+        exc_str = str(exc).lower()
+        if "429" in exc_str or "quota" in exc_str or "exhausted" in exc_str or "503" in exc_str or "unavailable" in exc_str:
+            from fastapi import HTTPException
+            logger.error(f"Gemini API capacity issue: {exc}")
+            raise HTTPException(
+                status_code=429,
+                detail="AI provider is currently experiencing high demand or quota limits. Please retry in a few moments."
+            )
         logger.error(f"Gemini API request failed: {exc}", exc_info=True)
         raise RuntimeError(f"LLM call failed: {exc}") from exc

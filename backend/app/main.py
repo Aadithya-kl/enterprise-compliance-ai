@@ -108,6 +108,11 @@ def on_startup():
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
 
+    # Temporary diagnostic logging
+    api_key = os.environ.get("GEMINI_API_KEY", getattr(settings, "GEMINI_API_KEY", ""))
+    key_suffix = api_key[-8:] if api_key and len(api_key) >= 8 else "NOT_SET"
+    logger.info(f"Loaded Gemini Key Suffix: {key_suffix}")
+
     # Create database tables
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables verified / created.")

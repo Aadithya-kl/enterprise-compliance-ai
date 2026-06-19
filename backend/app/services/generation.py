@@ -1106,6 +1106,19 @@ Instructions:
 
     prompt = f"{sys_prompt}\n\nContext:\n{context}\n\nQuestion:\n{question}"
 
+    # 1 & 2. Token Budget Controls & Retrieval Telemetry
+    est_tokens = len(prompt) // 4
+    if est_tokens > 80000:
+        logger.warning(f"Estimated tokens ({est_tokens}) exceed budget! Truncating context.")
+        prompt = prompt[:320000] # Cap prompt size to 80k tokens
+        est_tokens = len(prompt) // 4
+        
+    logger.info(
+        f"LLM Telemetry | number_of_chunks={len(context_chunks)} | "
+        f"estimated_token_count={est_tokens} | prompt_length={len(prompt)} | "
+        f"selected_files_count=N/A (Ask Question)"
+    )
+
     raw_response = generate_response(prompt=prompt)
     
     # Run post-processing validator

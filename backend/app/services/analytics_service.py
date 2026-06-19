@@ -300,8 +300,16 @@ Do not include any greeting or conversational filler. Output the executive summa
 """
     try:
         if total_violations == 0:
+            logger.info("Trend Analytics: No audit logs or violations recorded for this period.")
             return "No audit logs or violations recorded yet for this period. Generate compliance reports or adjust the query filters to view trends."
-        return _call_llm(context)
+        
+        logger.info(f"Trend Analytics Context Length: {len(context)}")
+        logger.info(f"Trend Analytics Execution Metrics - Total Violations: {total_violations}, Critical: {critical_count}")
+        result = _call_llm(context)
+        logger.info(f"Trend Analytics Generation Successful. Output length: {len(result)}")
+        return result
     except Exception as exc:
-        logger.error(f"Failed to generate trend summary: {exc}")
+        if hasattr(exc, "status_code") and exc.status_code == 429:
+            raise exc
+        logger.error(f"Failed to generate trend summary: {exc}", exc_info=True)
         return "Failed to generate AI trend summary due to LLM timeout."

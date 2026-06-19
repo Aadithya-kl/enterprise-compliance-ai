@@ -479,8 +479,8 @@ def ask_question(
             suggested_questions=list(set(suggested_questions))[:4]
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as exc:
         logger.error(f"Ask question failed: {exc}", exc_info=True)
         return QuestionResponse(

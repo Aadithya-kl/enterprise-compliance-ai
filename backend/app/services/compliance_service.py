@@ -170,11 +170,24 @@ Company Policy:
     return content
 
 
-def generate_compliance_report(selected_files: list[str] | None = None) -> dict:
+def generate_compliance_report(selected_files: list[str] | None = None, pre_retrieved_chunks: list[str] | None = None) -> dict:
     """
     Generate a structured compliance report dict via LLM using a Batched Map-Reduce approach.
     """
-    regulation_chunks = get_sampled_regulation_chunks(settings.MAX_REGULATION_CHUNKS, selected_files)
+    if pre_retrieved_chunks is not None:
+        regulation_chunks = pre_retrieved_chunks
+    else:
+        regulation_chunks = get_sampled_regulation_chunks(settings.MAX_REGULATION_CHUNKS, selected_files)
+
+    # 1. Token Budget Controls: Deduplicate, limit to 20 max, and truncate
+    unique_reg = []
+    seen = set()
+    for c in regulation_chunks:
+        if c not in seen:
+            seen.add(c)
+            # Truncate oversized chunks to approx 250 tokens (1000 chars)
+            unique_reg.append(c[:1000] if len(c) > 1000 else c)
+    regulation_chunks = unique_reg[:20]
 
     if not regulation_chunks:
         return {
@@ -199,11 +212,32 @@ def generate_compliance_report(selected_files: list[str] | None = None) -> dict:
         map_calls_count += 1
         
         batch_prompt_parts = []
+        batch_chunks_count = len(batch)
+        
         for reg_chunk in batch:
-            policy_chunks = retrieve_top_k_for_text(reg_chunk, "policy", settings.TOP_K_POLICY_CHUNKS, selected_files)
-            retrieved_chunks_count += len(policy_chunks)
+            if pre_retrieved_chunks is not None:
+                policy_chunks = []
+            else:
+                # Limit top-k policy chunks to 3 per requirement
+                policy_chunks = retrieve_top_k_for_text(reg_chunk, "policy", 3, selected_files)
+                
+                # Deduplicate and truncate policy chunks
+                unique_pol = []
+                seen_pol = set()
+                for p in policy_chunks:
+                    if p not in seen_pol:
+                        seen_pol.add(p)
+                        unique_pol.append(p[:1000] if len(p) > 1000 else p)
+                policy_chunks = unique_pol[:3]
+                
+                retrieved_chunks_count += len(policy_chunks)
+                batch_chunks_count += len(policy_chunks)
+                
             policy_text = "\n---\n".join(policy_chunks)
-            batch_prompt_parts.append(f"Regulation:\n{reg_chunk}\n\nRelevant Policy:\n{policy_text}")
+            if policy_text:
+                batch_prompt_parts.append(f"Regulation:\n{reg_chunk}\n\nRelevant Policy:\n{policy_text}")
+            else:
+                batch_prompt_parts.append(f"Content for Review:\n{reg_chunk}")
             
         combined_context = "\n\n=== NEXT REQUIREMENT ===\n\n".join(batch_prompt_parts)
         
@@ -218,7 +252,20 @@ CRITICAL INSTRUCTION: Return ONLY valid JSON matching this schema:
 
 {combined_context}"""
         
-        estimated_prompt_tokens += len(prompt) // 4
+        est_tokens = len(prompt) // 4
+        # 2. Retrieval Telemetry
+        if est_tokens > 80000:
+            logger.warning(f"Estimated tokens ({est_tokens}) exceed budget! Truncating combined context.")
+            prompt = prompt[:320000] # Cap prompt size
+            est_tokens = len(prompt) // 4
+            
+        logger.info(
+            f"LLM Telemetry | number_of_chunks={batch_chunks_count} | "
+            f"estimated_token_count={est_tokens} | prompt_length={len(prompt)} | "
+            f"selected_files_count={len(selected_files or [])}"
+        )
+        
+        estimated_prompt_tokens += est_tokens
         content = _call_llm(prompt)
         estimated_completion_tokens += len(content) // 4
         
