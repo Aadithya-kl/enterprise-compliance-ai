@@ -131,6 +131,7 @@ class Settings(BaseSettings):
     MCP_LOCAL_FILES_DIR: str = "./mcp_documents"
 
     GOOGLE_DRIVE_ENABLED: bool = False
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = ""
     GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
     GOOGLE_DRIVE_FOLDER_ID: str = ""
     # Legacy alias — kept for backwards compat

@@ -74,18 +74,27 @@ class DriveUploadService:
     # Configuration helpers
     # -----------------------------------------------------------------------
 
-    def _credential_file(self) -> str:
+    def _get_credentials_source(self) -> dict:
         """
-        Resolve the service account key file path.
+        Resolve the service account credentials source.
         Reads os.environ directly to bypass the lru_cache singleton in settings.
-        Falls back to settings values for compatibility.
+        Returns dict with 'json' or 'file' keys, or empty dict if neither.
         """
-        return (
-            os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
-            or os.environ.get("GOOGLE_DRIVE_CREDENTIALS_JSON", "").strip()
+        import os as _os
+        json_val = _os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip() or getattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON", "")
+        if json_val:
+            return {"json": json_val}
+            
+        file_val = (
+            _os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
+            or _os.environ.get("GOOGLE_DRIVE_CREDENTIALS_JSON", "").strip()
             or settings.GOOGLE_SERVICE_ACCOUNT_FILE
             or settings.GOOGLE_DRIVE_CREDENTIALS_JSON
         )
+        if file_val:
+            return {"file": file_val}
+            
+        return {}
 
     def _folder_id(self) -> str:
         return (
@@ -106,11 +115,17 @@ class DriveUploadService:
         Return True if all required configuration is present and the credential
         file exists on disk. Does NOT verify network connectivity.
         """
-        cred_path = self._credential_file()
+        cred_source = self._get_credentials_source()
+        has_cred = False
+        if cred_source:
+            if "json" in cred_source:
+                has_cred = True
+            elif "file" in cred_source and os.path.exists(cred_source["file"]):
+                has_cred = True
+                
         return bool(
             self._drive_enabled()
-            and cred_path
-            and os.path.exists(cred_path)
+            and has_cred
             and self._folder_id()
         )
 
@@ -129,15 +144,25 @@ class DriveUploadService:
                 "Run: pip install google-api-python-client google-auth"
             ) from exc
 
-        cred_path = self._credential_file()
-        if not os.path.exists(cred_path):
+        cred_source = self._get_credentials_source()
+        if not cred_source:
+            raise UploadToGoogleDriveError("No service account credentials source configured")
+            
+        if "file" in cred_source and not os.path.exists(cred_source["file"]):
             raise UploadToGoogleDriveError(
-                f"Service account file not found: {cred_path}"
+                f"Service account file not found: {cred_source['file']}"
             )
 
-        credentials = service_account.Credentials.from_service_account_file(
-            cred_path, scopes=[scope]
-        )
+        import json
+        if "json" in cred_source:
+            info = json.loads(cred_source["json"])
+            credentials = service_account.Credentials.from_service_account_info(
+                info, scopes=[scope]
+            )
+        else:
+            credentials = service_account.Credentials.from_service_account_file(
+                cred_source["file"], scopes=[scope]
+            )
         return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
     # -----------------------------------------------------------------------

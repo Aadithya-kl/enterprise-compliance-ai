@@ -40,26 +40,31 @@ class GoogleDriveMCPSource(MCPSource):
     def source_name(self) -> str:
         return "google_drive"
 
-    def _credential_file(self) -> str:
+    def _get_credentials_source(self) -> dict:
         """
-        Return the effective service account file path.
-        Reads directly from environment at call time to avoid stale lru_cache values.
-        Prefers GOOGLE_SERVICE_ACCOUNT_FILE; falls back to legacy alias.
+        Return the credential source info (either raw JSON string or file path).
+        Returns dict with 'json' or 'file' keys, or empty dict if neither.
         """
         import os as _os
-        # Read live from environment first (handles server restarts without reload)
-        live_path = (
+        json_val = _os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip() or settings.GOOGLE_SERVICE_ACCOUNT_JSON
+        if json_val:
+            return {"json": json_val}
+            
+        file_val = (
             _os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
             or _os.environ.get("GOOGLE_DRIVE_CREDENTIALS_JSON", "").strip()
             or settings.GOOGLE_SERVICE_ACCOUNT_FILE
             or settings.GOOGLE_DRIVE_CREDENTIALS_JSON
         )
-        return live_path
+        if file_val:
+            return {"file": file_val}
+            
+        return {}
 
     def is_configured(self) -> bool:
         return bool(
             settings.GOOGLE_DRIVE_ENABLED
-            and self._credential_file()
+            and self._get_credentials_source()
             and settings.GOOGLE_DRIVE_FOLDER_ID
         )
 
@@ -85,23 +90,23 @@ class GoogleDriveMCPSource(MCPSource):
             "message": "",
         }
 
-        cred_path = self._credential_file()
+        cred_source = self._get_credentials_source()
         folder_id = (
             _os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "").strip()
             or settings.GOOGLE_DRIVE_FOLDER_ID
         )
 
-        # Step 1: credential file
-        if not cred_path:
+        # Step 1: credential source
+        if not cred_source:
             result["message"] = (
-                "GOOGLE_SERVICE_ACCOUNT_FILE is not set. "
+                "GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_FILE is not set. "
                 "Set it in .env and restart the server."
             )
             return result
 
-        if not _os.path.exists(cred_path):
+        if "file" in cred_source and not _os.path.exists(cred_source["file"]):
             result["message"] = (
-                f"Service account file not found at: {cred_path}. "
+                f"Service account file not found at: {cred_source['file']}. "
                 f"Verify the path is correct and the file exists."
             )
             return result
@@ -111,10 +116,17 @@ class GoogleDriveMCPSource(MCPSource):
         # Step 2: load credentials
         try:
             from google.oauth2 import service_account
-            credentials = service_account.Credentials.from_service_account_file(
-                cred_path,
-                scopes=["https://www.googleapis.com/auth/drive.readonly"],
-            )
+            import json
+            scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+            if "json" in cred_source:
+                info = json.loads(cred_source["json"])
+                credentials = service_account.Credentials.from_service_account_info(
+                    info, scopes=scopes
+                )
+            else:
+                credentials = service_account.Credentials.from_service_account_file(
+                    cred_source["file"], scopes=scopes
+                )
             result["service_account_loaded"] = True
             logger.info(
                 f"Google Drive verify: credentials loaded for "
@@ -123,7 +135,7 @@ class GoogleDriveMCPSource(MCPSource):
         except Exception as exc:
             result["message"] = (
                 f"Service account credentials failed to load: {exc}. "
-                f"Verify the JSON key file is valid."
+                f"Verify the JSON key is valid."
             )
             return result
 
@@ -191,9 +203,14 @@ class GoogleDriveMCPSource(MCPSource):
             )
             return []
 
-        if not os.path.exists(self._credential_file()):
+        cred_source = self._get_credentials_source()
+        if not cred_source:
+            logger.error("Google Drive MCP: no credentials source found")
+            return []
+            
+        if "file" in cred_source and not os.path.exists(cred_source["file"]):
             logger.error(
-                f"Google Drive MCP: service account file not found: {self._credential_file()}"
+                f"Google Drive MCP: service account file not found: {cred_source['file']}"
             )
             return []
 
@@ -297,11 +314,20 @@ class GoogleDriveMCPSource(MCPSource):
         """Build an authenticated Google Drive API service using a Service Account."""
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
+        import json
 
-        credentials = service_account.Credentials.from_service_account_file(
-            self._credential_file(),
-            scopes=["https://www.googleapis.com/auth/drive.readonly"],
-        )
+        scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+        cred_source = self._get_credentials_source()
+        
+        if "json" in cred_source:
+            info = json.loads(cred_source["json"])
+            credentials = service_account.Credentials.from_service_account_info(
+                info, scopes=scopes
+            )
+        else:
+            credentials = service_account.Credentials.from_service_account_file(
+                cred_source["file"], scopes=scopes
+            )
         return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
     def _list_all_files(
