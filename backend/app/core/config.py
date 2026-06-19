@@ -78,7 +78,21 @@ class Settings(BaseSettings):
     @property
     def allowed_origins_list(self) -> list[str]:
         """Return ALLOWED_ORIGINS as a Python list for middleware configuration."""
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+        origins = [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+        
+        # Explicitly append Vercel production domains to prevent Railway ENV overrides
+        vercel_domains = [
+            "https://autonomous-compliance-audit-platfor.vercel.app",
+            "https://enterprise-compliance-ai-swart.vercel.app",
+            "https://enterprise-compliance-ai-git-main-aadithya-kls-projects.vercel.app",
+            "https://enterprise-compliance-ai-4tjp6wnfp-aadithya-kls-projects.vercel.app"
+        ]
+        
+        for d in vercel_domains:
+            if d not in origins:
+                origins.append(d)
+                
+        return origins
 
     # -----------------------------------------------------------------------
     # Gemini / LLM
