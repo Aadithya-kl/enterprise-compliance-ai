@@ -35,7 +35,6 @@ Instead of manually reviewing hundreds of policy documents against regulatory st
 
 ## Screenshots
 
-> _Add screenshots here after deployment._
 
 | Dashboard | Compliance Report | Risk Assessment |
 |-----------|------------------|-----------------|
