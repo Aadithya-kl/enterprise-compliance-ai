@@ -60,7 +60,7 @@ export default function App() {
                 <Route
                   path="documents/upload"
                   element={
-                    <ProtectedRoute allowedRoles={['admin', 'auditor']}>
+                    <ProtectedRoute allowedRoles={['admin', 'compliance_officer']}>
                       <UploadPage />
                     </ProtectedRoute>
                   }
