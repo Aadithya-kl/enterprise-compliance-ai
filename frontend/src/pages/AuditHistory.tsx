@@ -118,7 +118,7 @@ export default function AuditHistoryPage() {
                   <button onClick={() => integrationsApi.exportReportPdf(selected.id)} className="btn-secondary text-xs px-2 py-1">Export PDF</button>
                   <button onClick={() => integrationsApi.exportReportDocx(selected.id)} className="btn-secondary text-xs px-2 py-1">Export DOCX</button>
                 </div>
-                {user?.role === 'admin' && (
+                {(user?.role === 'admin' || user?.role === 'compliance_officer') && (
                   <button
                     onClick={() => deleteMutation.mutate(selected.id)}
                     disabled={deleteMutation.isPending}

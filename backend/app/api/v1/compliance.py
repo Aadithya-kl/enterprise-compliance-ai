@@ -10,7 +10,7 @@ DELETE /api/v1/compliance/history/{id} — delete report
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_admin, get_current_user
+from app.core.dependencies import get_admin, get_current_user, require_role
 from app.core.logging import get_logger
 from app.crud.audit_report import crud_audit_report
 from app.db.session import get_db
@@ -263,12 +263,12 @@ def get_audit_report(
 @router.delete(
     "/history/{report_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete an audit report (admin only)",
+    summary="Delete an audit report (admin & compliance officer)",
 )
 def delete_audit_report(
     report_id: int,
     db: Session = Depends(get_db),
-    _admin: User = Depends(get_admin),
+    _current_user: User = Depends(require_role(["admin", "compliance_officer"])),
 ):
     deleted = crud_audit_report.delete(db, report_id)
     if not deleted:
