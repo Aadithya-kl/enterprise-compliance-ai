@@ -42,10 +42,10 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     # Database (Supabase PostgreSQL)
     # -----------------------------------------------------------------------
-    DATABASE_URL: str = Field(..., description="PostgreSQL connection string")
+    DATABASE_URL: str = Field("postgresql://postgres:postgres@localhost:5432/postgres", description="PostgreSQL connection string")
     
-    SUPABASE_URL: str = Field(..., description="Supabase API URL")
-    SUPABASE_SERVICE_ROLE_KEY: str = Field(..., description="Supabase Service Role Key")
+    SUPABASE_URL: str = Field("https://placeholder-supabase-url.supabase.co", description="Supabase API URL")
+    SUPABASE_SERVICE_ROLE_KEY: str = Field("placeholder-service-role-key", description="Supabase Service Role Key")
     SUPABASE_STORAGE_BUCKET: str = "compliance_documents"
 
     DB_POOL_SIZE: int = 5
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # Authentication
     # -----------------------------------------------------------------------
     SECRET_KEY: str = Field(
-        ...,
+        "placeholder-secret-key-32-chars-long-here-to-prevent-boot-crash",
         description="HS256 signing key — generate with: openssl rand -hex 32"
     )
     ALGORITHM: str = "HS256"
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     # Gemini / LLM
     # -----------------------------------------------------------------------
-    GEMINI_API_KEY: str = Field(..., description="Google Gemini API Key")
+    GEMINI_API_KEY: str = Field("placeholder-gemini-api-key", description="Google Gemini API Key")
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # -----------------------------------------------------------------------
