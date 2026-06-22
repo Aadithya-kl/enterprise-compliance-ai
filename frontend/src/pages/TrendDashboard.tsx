@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { complianceApi } from '../api/compliance'
 import { documentsApi } from '../api/documents'
+import { integrationsApi } from '../api/integrations'
 import type { IndexedFile } from '../types/audit'
 import { extractErrorMessage } from '../utils/errors'
 import EvidenceDrawer from '../components/common/EvidenceDrawer'
@@ -59,6 +60,44 @@ export default function TrendDashboardPage() {
     if (!query.trim()) return
     setRouteResult(null)
     queryMutation.mutate(query)
+  }
+
+  const handleDownloadPdf = async () => {
+    if (routeResult?.saved_report_id) {
+      try {
+        await integrationsApi.exportReportPdf(routeResult.saved_report_id)
+      } catch (err) {
+        alert('Failed to download PDF report: ' + extractErrorMessage(err))
+      }
+    } else {
+      const blob = new Blob([routeResult?.content || ''], { type: 'text/markdown' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Compliance_Response_${Date.now()}.md`)
+      document.body.appendChild(link)
+      link.click()
+      link.parentNode?.removeChild(link)
+    }
+  }
+
+  const handleDownloadDocx = async () => {
+    if (routeResult?.saved_report_id) {
+      try {
+        await integrationsApi.exportReportDocx(routeResult.saved_report_id)
+      } catch (err) {
+        alert('Failed to download DOCX report: ' + extractErrorMessage(err))
+      }
+    } else {
+      const blob = new Blob([routeResult?.content || ''], { type: 'text/plain' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Compliance_Response_${Date.now()}.txt`)
+      document.body.appendChild(link)
+      link.click()
+      link.parentNode?.removeChild(link)
+    }
   }
 
   // Calculate years covered dynamically from filenames
@@ -213,19 +252,19 @@ export default function TrendDashboardPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => alert('PDF export initialized.')}
+                    onClick={handleDownloadPdf}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-250 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
                   >
                     <ArrowDownTrayIcon className="w-3.5 h-3.5" />
-                    <span>Download PDF</span>
+                    <span>{routeResult?.saved_report_id ? 'Download PDF' : 'Download MD'}</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => alert('DOCX export initialized.')}
+                    onClick={handleDownloadDocx}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-250 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
                   >
                     <ArrowDownTrayIcon className="w-3.5 h-3.5" />
-                    <span>Download DOCX</span>
+                    <span>{routeResult?.saved_report_id ? 'Download DOCX' : 'Download TXT'}</span>
                   </button>
                 </div>
 
