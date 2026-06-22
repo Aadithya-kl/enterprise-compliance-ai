@@ -86,6 +86,7 @@ export default function SettingsPage() {
 }
 
 function IntegrationsPanel() {
+  const { user } = useAuth()
   const [gdriveStatus, setGdriveStatus] = useState<{ connected: boolean, message?: string } | null>(null)
   const [notionStatus, setNotionStatus] = useState<{ connected: boolean, message?: string } | null>(null)
   const [syncingGdrive, setSyncingGdrive] = useState(false)
