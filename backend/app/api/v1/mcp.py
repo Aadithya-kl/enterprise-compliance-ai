@@ -7,7 +7,7 @@ GET  /api/v1/mcp/sources — list configured and available sources
 from fastapi import APIRouter, Depends, status, BackgroundTasks
 from pydantic import BaseModel
 
-from app.core.dependencies import get_admin
+from app.core.dependencies import get_admin, require_role
 from app.core.logging import get_logger
 from app.mcp.google_drive import GoogleDriveMCPSource
 from app.mcp.notion import NotionMCPSource
@@ -52,7 +52,7 @@ class IntegrationToggleRequest(BaseModel):
     "/integrations",
     summary="Get all integration activation statuses (admin only)",
 )
-def get_integrations(_admin: User = Depends(get_admin)):
+def get_integrations(current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     from app.db.session import SessionLocal
     from app.models.integration_config import IntegrationConfig
     db = SessionLocal()
@@ -323,7 +323,7 @@ def _process_google_drive_sync_background(job_id: str):
     response_model=SyncJobResponse,
     summary="Sync PDF documents from the configured Google Drive folder (admin only)",
 )
-def sync_google_drive(background_tasks: BackgroundTasks, _admin: User = Depends(get_admin)):
+def sync_google_drive(background_tasks: BackgroundTasks, current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     if not _google_drive_source.is_configured():
         from fastapi import HTTPException, status as http_status
         raise HTTPException(
@@ -362,7 +362,7 @@ def sync_google_drive(background_tasks: BackgroundTasks, _admin: User = Depends(
     response_model=GoogleDriveVerifyResponse,
     summary="Verify Google Drive API connection and folder access (admin only)",
 )
-def verify_google_drive_connection(_admin: User = Depends(get_admin)):
+def verify_google_drive_connection(current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     """Tests Google Drive connectivity step by step."""
     source = GoogleDriveMCPSource()
     result = source.verify_connection()
@@ -452,7 +452,7 @@ def _process_notion_sync_background(job_id: str):
     response_model=SyncJobResponse,
     summary="Sync pages from the configured Notion database (admin only)",
 )
-def sync_notion(background_tasks: BackgroundTasks, _admin: User = Depends(get_admin)):
+def sync_notion(background_tasks: BackgroundTasks, current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     if not _notion_source.is_configured():
         from fastapi import HTTPException, status as http_status
         raise HTTPException(
@@ -485,7 +485,7 @@ def sync_notion(background_tasks: BackgroundTasks, _admin: User = Depends(get_ad
     "/sync/status/{job_id}",
     summary="Get the status of a background sync job",
 )
-def get_sync_status(job_id: str, _admin: User = Depends(get_admin)):
+def get_sync_status(job_id: str, current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     from fastapi import HTTPException
     from app.db.session import SessionLocal
     from app.models.sync_job import SyncJob
@@ -513,7 +513,7 @@ def get_sync_status(job_id: str, _admin: User = Depends(get_admin)):
     response_model=NotionVerifyResponse,
     summary="Verify Notion API connection and database access (admin only)",
 )
-def verify_notion_connection(_admin: User = Depends(get_admin)):
+def verify_notion_connection(current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     """Tests Notion connectivity step by step."""
     source = NotionMCPSource()
     result = source.verify_connection()
