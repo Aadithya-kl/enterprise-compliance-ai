@@ -192,8 +192,8 @@ function IntegrationsPanel() {
           <div className="flex items-center gap-3">
             <button
               onClick={toggleGdrive}
-              disabled={user?.role !== 'admin'}
-              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${gdriveEnabled ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700'} ${user?.role !== 'admin' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              disabled={user?.role !== 'admin' && user?.role !== 'compliance_officer'}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${gdriveEnabled ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700'} ${user?.role !== 'admin' && user?.role !== 'compliance_officer' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               aria-label="Toggle Google Drive"
             >
               <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${gdriveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -220,8 +220,8 @@ function IntegrationsPanel() {
           <div className="flex items-center gap-3">
             <button
               onClick={toggleNotion}
-              disabled={user?.role !== 'admin'}
-              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notionEnabled ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700'} ${user?.role !== 'admin' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              disabled={user?.role !== 'admin' && user?.role !== 'compliance_officer'}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notionEnabled ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700'} ${user?.role !== 'admin' && user?.role !== 'compliance_officer' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               aria-label="Toggle Notion"
             >
               <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${notionEnabled ? 'translate-x-4' : 'translate-x-0'}`} />

@@ -67,7 +67,7 @@ def get_integrations(current_user: User = Depends(require_role(["admin", "compli
     "/integrations/{source_name}",
     summary="Toggle activation status of an integration (admin only)",
 )
-def toggle_integration(source_name: str, payload: IntegrationToggleRequest, _admin: User = Depends(get_admin)):
+def toggle_integration(source_name: str, payload: IntegrationToggleRequest, current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     from app.db.session import SessionLocal
     from app.models.integration_config import IntegrationConfig
     from fastapi import HTTPException
@@ -97,7 +97,7 @@ def toggle_integration(source_name: str, payload: IntegrationToggleRequest, _adm
     response_model=list[SourceInfo],
     summary="List all MCP sources and their configuration status",
 )
-def list_sources(_admin: User = Depends(get_admin)):
+def list_sources(current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     return [
         SourceInfo(source=s.source_name, configured=s.is_configured())
         for s in _SOURCES
@@ -110,7 +110,7 @@ def list_sources(_admin: User = Depends(get_admin)):
     response_model=SyncResponse,
     summary="Sync documents from all configured MCP sources (admin only)",
 )
-def sync_all_sources(_admin: User = Depends(get_admin)):
+def sync_all_sources(current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     """
     Iterates all configured MCP sources, fetches documents,
     chunks them, and stores in Qdrant for RAG retrieval.
@@ -192,7 +192,7 @@ class MCPStatsResponse(BaseModel):
     response_model=dict[str, MCPStatsResponse],
     summary="Get metrics for all MCP integrations",
 )
-def get_mcp_stats(_admin: User = Depends(get_admin)):
+def get_mcp_stats(current_user: User = Depends(require_role(["admin", "compliance_officer"]))):
     """Returns knowledge source metrics for the dashboard widget."""
     
     stats = {}
