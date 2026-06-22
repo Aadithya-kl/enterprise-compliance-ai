@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../store/authStore'
 import { formatDate, formatRole } from '../utils/formatters'
 import { integrationsApi } from '../api/integrations'
@@ -90,6 +90,24 @@ function IntegrationsPanel() {
   const [notionStatus, setNotionStatus] = useState<{ connected: boolean, message?: string } | null>(null)
   const [syncingGdrive, setSyncingGdrive] = useState(false)
   const [syncingNotion, setSyncingNotion] = useState(false)
+  const [gdriveEnabled, setGdriveEnabled] = useState(false)
+  const [notionEnabled, setNotionEnabled] = useState(false)
+  const [loadingConfig, setLoadingConfig] = useState(true)
+
+  useEffect(() => {
+    const fetchConfigs = async () => {
+      try {
+        const configs = await integrationsApi.getIntegrations()
+        setGdriveEnabled(!!configs.google_drive)
+        setNotionEnabled(!!configs.notion)
+      } catch (err) {
+        console.error('Failed to fetch integration toggles', err)
+      } finally {
+        setLoadingConfig(false)
+      }
+    }
+    fetchConfigs()
+  }, [])
 
   const verifyGdrive = async () => {
     try {
@@ -133,21 +151,62 @@ function IntegrationsPanel() {
     }
   }
 
+  const toggleGdrive = async () => {
+    const nextState = !gdriveEnabled
+    setGdriveEnabled(nextState)
+    try {
+      await integrationsApi.toggleIntegration('google_drive', nextState)
+      if (!nextState) {
+        setGdriveStatus(null)
+      }
+    } catch (err) {
+      alert(extractErrorMessage(err) ?? 'Failed to toggle Google Drive integration.')
+      setGdriveEnabled(!nextState)
+    }
+  }
+
+  const toggleNotion = async () => {
+    const nextState = !notionEnabled
+    setNotionEnabled(nextState)
+    try {
+      await integrationsApi.toggleIntegration('notion', nextState)
+      if (!nextState) {
+        setNotionStatus(null)
+      }
+    } catch (err) {
+      alert(extractErrorMessage(err) ?? 'Failed to toggle Notion integration.')
+      setNotionEnabled(!nextState)
+    }
+  }
+
+  if (loadingConfig) {
+    return <div className="text-sm text-gray-500 dark:text-gray-400">Loading integrations panel...</div>
+  }
+
   return (
     <>
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Google Drive Integration</h2>
-          <span className={`text-xs px-2 py-1 rounded-full ${gdriveStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-            {gdriveStatus?.connected ? 'Connected' : 'Not Verified'}
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleGdrive}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${gdriveEnabled ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+              aria-label="Toggle Google Drive"
+            >
+              <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${gdriveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+            </button>
+            <span className={`text-xs px-2 py-1 rounded-full ${gdriveEnabled && gdriveStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {!gdriveEnabled ? 'Deactivated' : gdriveStatus?.connected ? 'Connected' : 'Not Verified'}
+            </span>
+          </div>
         </div>
         <p className="text-xs text-gray-500 mb-4">
           {gdriveStatus?.message || 'Sync compliance documents directly from Google Drive.'}
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={verifyGdrive} className="btn btn-secondary text-xs py-1.5">Verify Connection</button>
-          <button onClick={syncGdrive} disabled={syncingGdrive} className="btn btn-primary text-xs py-1.5">
+          <button onClick={verifyGdrive} disabled={!gdriveEnabled} className="btn btn-secondary text-xs py-1.5 disabled:opacity-50">Verify Connection</button>
+          <button onClick={syncGdrive} disabled={!gdriveEnabled || syncingGdrive} className="btn btn-primary text-xs py-1.5 disabled:opacity-50">
             {syncingGdrive ? 'Syncing...' : 'Sync Documents'}
           </button>
         </div>
@@ -156,16 +215,25 @@ function IntegrationsPanel() {
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Notion Integration</h2>
-          <span className={`text-xs px-2 py-1 rounded-full ${notionStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-            {notionStatus?.connected ? 'Connected' : 'Not Verified'}
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleNotion}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notionEnabled ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+              aria-label="Toggle Notion"
+            >
+              <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${notionEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+            </button>
+            <span className={`text-xs px-2 py-1 rounded-full ${notionEnabled && notionStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {!notionEnabled ? 'Deactivated' : notionStatus?.connected ? 'Connected' : 'Not Verified'}
+            </span>
+          </div>
         </div>
         <p className="text-xs text-gray-500 mb-4">
           {notionStatus?.message || 'Sync compliance policies directly from Notion databases.'}
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={verifyNotion} className="btn btn-secondary text-xs py-1.5">Verify Connection</button>
-          <button onClick={syncNotion} disabled={syncingNotion} className="btn btn-primary text-xs py-1.5">
+          <button onClick={verifyNotion} disabled={!notionEnabled} className="btn btn-secondary text-xs py-1.5 disabled:opacity-50">Verify Connection</button>
+          <button onClick={syncNotion} disabled={!notionEnabled || syncingNotion} className="btn btn-primary text-xs py-1.5 disabled:opacity-50">
             {syncingNotion ? 'Syncing...' : 'Sync Documents'}
           </button>
         </div>

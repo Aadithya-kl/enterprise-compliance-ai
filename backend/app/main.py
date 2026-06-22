@@ -129,6 +129,9 @@ def on_startup():
     # Bootstrap default admin user if no users exist
     _bootstrap_admin()
 
+    # Bootstrap default integrations config if missing
+    _bootstrap_integrations_config()
+
     # Ensure upload directory exists
     logger.info("Local upload persistence has been removed (Supabase Migration Phase 3).")
 
@@ -288,6 +291,41 @@ def _bootstrap_admin():
             logger.info("Admin account already exists")
     except Exception as exc:
         logger.error(f"Admin bootstrap failed: {exc}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _bootstrap_integrations_config():
+    """Bootstrap default database records for Google Drive and Notion integrations."""
+    from app.db.session import SessionLocal
+    from app.models.integration_config import IntegrationConfig
+    db = SessionLocal()
+    try:
+        # Google Drive config
+        gdrive = db.query(IntegrationConfig).filter_by(source_name="google_drive").first()
+        if not gdrive:
+            gdrive = IntegrationConfig(
+                source_name="google_drive",
+                is_enabled=settings.GOOGLE_DRIVE_ENABLED
+            )
+            db.add(gdrive)
+            logger.info("Bootstrapped Google Drive integration config")
+
+        # Notion config
+        notion = db.query(IntegrationConfig).filter_by(source_name="notion").first()
+        if not notion:
+            is_notion_env_configured = bool(settings.NOTION_API_TOKEN and settings.NOTION_DATABASE_ID)
+            notion = IntegrationConfig(
+                source_name="notion",
+                is_enabled=is_notion_env_configured
+            )
+            db.add(notion)
+            logger.info("Bootstrapped Notion integration config")
+
+        db.commit()
+    except Exception as exc:
+        logger.error(f"Integrations configuration bootstrap failed: {exc}")
         db.rollback()
     finally:
         db.close()

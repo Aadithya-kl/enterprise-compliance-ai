@@ -5,15 +5,11 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.core.config import settings
-from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from app.db.qdrant import _client as client, Filter, FieldCondition, MatchValue
 
 def clean_metadata():
-    print(f"Connecting to Qdrant at {settings.QDRANT_URL}...")
-    client = QdrantClient(
-        url=settings.QDRANT_URL,
-        api_key=settings.QDRANT_API_KEY
-    )
+    print(f"Using Qdrant client...")
+
     
     collection_name = settings.QDRANT_COLLECTION_NAME
 

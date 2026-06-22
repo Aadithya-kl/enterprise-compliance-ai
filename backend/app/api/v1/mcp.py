@@ -44,6 +44,54 @@ class SourceInfo(BaseModel):
     configured: bool
 
 
+class IntegrationToggleRequest(BaseModel):
+    is_enabled: bool
+
+
+@router.get(
+    "/integrations",
+    summary="Get all integration activation statuses (admin only)",
+)
+def get_integrations(_admin: User = Depends(get_admin)):
+    from app.db.session import SessionLocal
+    from app.models.integration_config import IntegrationConfig
+    db = SessionLocal()
+    try:
+        configs = db.query(IntegrationConfig).all()
+        return {c.source_name: c.is_enabled for c in configs}
+    finally:
+        db.close()
+
+
+@router.patch(
+    "/integrations/{source_name}",
+    summary="Toggle activation status of an integration (admin only)",
+)
+def toggle_integration(source_name: str, payload: IntegrationToggleRequest, _admin: User = Depends(get_admin)):
+    from app.db.session import SessionLocal
+    from app.models.integration_config import IntegrationConfig
+    from fastapi import HTTPException
+    
+    if source_name not in ["google_drive", "notion"]:
+        raise HTTPException(status_code=400, detail="Invalid source name")
+        
+    db = SessionLocal()
+    try:
+        config = db.query(IntegrationConfig).filter_by(source_name=source_name).first()
+        if not config:
+            config = IntegrationConfig(source_name=source_name, is_enabled=payload.is_enabled)
+            db.add(config)
+        else:
+            config.is_enabled = payload.is_enabled
+        db.commit()
+        return {"status": "success", "source": source_name, "is_enabled": config.is_enabled}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
 @router.get(
     "/sources",
     response_model=list[SourceInfo],
@@ -54,6 +102,7 @@ def list_sources(_admin: User = Depends(get_admin)):
         SourceInfo(source=s.source_name, configured=s.is_configured())
         for s in _SOURCES
     ]
+
 
 
 @router.post(

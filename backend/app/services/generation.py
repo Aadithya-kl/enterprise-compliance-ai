@@ -20,40 +20,11 @@ import json as json_lib
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Qdrant Cloud & FastEmbed client (module-level singleton)
+# Qdrant client (shared from central db module)
 # ---------------------------------------------------------------------------
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct, Filter, FieldCondition, MatchValue
-from fastembed import TextEmbedding
+from app.db.qdrant import _client, _embedding_model, PointStruct, Filter, FieldCondition, MatchValue
 
-_client = QdrantClient(
-    url=settings.QDRANT_URL,
-    api_key=settings.QDRANT_API_KEY,
-)
-
-
-if not _client.collection_exists(settings.QDRANT_COLLECTION_NAME):
-    _client.create_collection(
-        collection_name=settings.QDRANT_COLLECTION_NAME,
-        vectors_config=VectorParams(size=384, distance=Distance.COSINE),
-    )
-
-# Unconditionally verify/create payload indexes for existing collections
-REQUIRED_INDEXES = ["filename", "document_type", "drive_file_name", "title", "source"]
-for field in REQUIRED_INDEXES:
-    try:
-        _client.create_payload_index(
-            collection_name=settings.QDRANT_COLLECTION_NAME,
-            field_name=field,
-            field_schema="keyword"
-        )
-    except Exception:
-        pass
-
-logger.info(f"Verified Qdrant payload indexes: {REQUIRED_INDEXES}")
-
-_embedding_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,20 @@ class NotionMCPSource(MCPSource):
         return "notion"
 
     def is_configured(self) -> bool:
+        # Check database activation toggle
+        try:
+            from app.db.session import SessionLocal
+            from app.models.integration_config import IntegrationConfig
+            db = SessionLocal()
+            config = db.query(IntegrationConfig).filter_by(source_name="notion").first()
+            if config and not config.is_enabled:
+                return False
+        except Exception:
+            pass
+        finally:
+            if 'db' in locals():
+                db.close()
+
         return bool(settings.NOTION_API_TOKEN and settings.NOTION_DATABASE_ID)
 
     def fetch_documents(self) -> list[MCPDocument]:

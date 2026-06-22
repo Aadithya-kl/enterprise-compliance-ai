@@ -74,6 +74,16 @@ export const integrationsApi = {
     return res.data
   },
 
+  getIntegrations: async (): Promise<Record<string, boolean>> => {
+    const res = await client.get<Record<string, boolean>>('/mcp/integrations')
+    return res.data
+  },
+
+  toggleIntegration: async (sourceName: string, isEnabled: boolean): Promise<{ status: string, source: string, is_enabled: boolean }> => {
+    const res = await client.patch<{ status: string, source: string, is_enabled: boolean }>(`/mcp/integrations/${sourceName}`, { is_enabled: isEnabled })
+    return res.data
+  },
+
   exportReportPdf: async (id: number) => {
     const res = await client.get(`/reports/${id}/export/pdf`, { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([res.data]))
