@@ -25,6 +25,7 @@ from app.models.user import User, UserRole
 import app.models.audit_report  # noqa: F401
 import app.models.compliance_violation  # noqa: F401
 import app.models.sync_job  # noqa: F401
+import app.models.integration_config  # noqa: F401
 
 configure_logging()
 logger = get_logger(__name__)
