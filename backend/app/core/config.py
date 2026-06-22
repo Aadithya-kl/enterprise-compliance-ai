@@ -103,8 +103,8 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     # Qdrant Cloud
     # -----------------------------------------------------------------------
-    QDRANT_URL: str = Field(..., description="Qdrant Cloud URL")
-    QDRANT_API_KEY: str = Field(..., description="Qdrant API Key")
+    QDRANT_URL: str = Field("", description="Qdrant Cloud URL")
+    QDRANT_API_KEY: str = Field("", description="Qdrant API Key")
     QDRANT_COLLECTION_NAME: str = "documents"
 
     # -----------------------------------------------------------------------
