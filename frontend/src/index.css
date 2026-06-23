@@ -117,6 +117,38 @@
   .page-subheading {
     @apply text-xs md:text-sm text-gray-500 dark:text-gray-400;
   }
+
+  /* Markdown prose styling */
+  .prose h1 {
+    @apply text-sm md:text-base font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800/80 pb-1.5 mt-7 mb-4;
+  }
+  .prose h2 {
+    @apply text-xs md:text-sm font-semibold text-gray-800 dark:text-gray-200 mt-5 mb-3;
+  }
+  .prose p {
+    @apply text-xs md:text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3.5;
+  }
+  .prose ul {
+    @apply list-disc pl-5 mb-4 space-y-1 text-xs md:text-sm text-gray-600 dark:text-gray-300;
+  }
+  .prose ol {
+    @apply list-decimal pl-5 mb-4 space-y-1 text-xs md:text-sm text-gray-600 dark:text-gray-300;
+  }
+  .prose table {
+    @apply w-full border-collapse my-4 text-[11px] md:text-xs text-left;
+  }
+  .prose th {
+    @apply bg-gray-50 dark:bg-gray-900/60 p-2.5 font-semibold border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300;
+  }
+  .prose td {
+    @apply p-2.5 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 align-top leading-relaxed;
+  }
+  .prose strong {
+    @apply font-semibold text-gray-900 dark:text-white;
+  }
+  .prose em {
+    @apply italic text-gray-800 dark:text-gray-200;
+  }
 }
 
 @layer utilities {

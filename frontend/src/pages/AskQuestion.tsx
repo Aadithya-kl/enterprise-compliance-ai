@@ -86,7 +86,7 @@ export default function AskQuestionPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <div className="max-w-7xl mx-auto w-full px-4 space-y-6 pb-12">
       <div>
         <h1 className="page-heading">Ask Questions</h1>
         <p className="page-subheading mt-1">
@@ -94,9 +94,9 @@ export default function AskQuestionPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         {/* Left/Main column: Form and Answer */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           {/* Question Form */}
           <form onSubmit={handleAsk} className="card p-5 space-y-4">
             <div>
