@@ -311,9 +311,19 @@ We have compiled the following historical compliance metrics:
 User request/focus: {query_prompt if query_prompt else "Provide an executive summary of compliance trends."}
 
 INSTRUCTION:
-Write a highly professional, concise, narrative trend summary (2-3 sentences max). Cite statistics directly.
-Example: "Critical violations increased 23% during the last quarter, mainly driven by MFA and access control policy failures. Average compliance score stabilized at 82.5%."
-Do not include any greeting or conversational filler. Output the executive summary directly.
+Write a highly professional, comprehensive, and detailed executive compliance trend analysis report.
+Structure your report with the following section headings using Markdown:
+
+# Executive Trend Summary
+(Provide a detailed overview of the overall compliance posture based on total violations and period metrics. 2-3 detailed paragraphs.)
+
+# Critical and High-Risk Severity Areas
+(Detail the breakdown of critical, high, and medium severity findings and their impact on operational risk.)
+
+# Key Findings & Areas for Remediation
+(Provide detailed bullet points analyzing the top recurring findings and score trends over the period, with actionable recommendations for the board.)
+
+Cite statistics and figures directly from the metrics. Do not include any greeting or conversational filler. Output the detailed markdown report directly.
 """
     try:
         if total_violations == 0:
