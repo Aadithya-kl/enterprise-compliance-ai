@@ -300,18 +300,17 @@ def generate_ai_trend_summary(db: Session, query_prompt: str = "") -> str:
         logger.info("Trend Analytics: Returning cached AI trend summary.")
         return _TREND_SUMMARY_CACHE[cache_key]
         
-    context = f"""You are a Principal AI Compliance Director reporting to the board.
-    
-We have compiled the following historical compliance metrics:
-{timeframe_str}- Total Identified Violations: {total_violations}
-- Severity breakdown: Critical: {critical_count}, High: {high_count}, Medium: {medium_count}
-- Average Compliance Score Trend: {score_str if score_str else "No data for this period"}
-- Top Recurring Findings: {freq_str if freq_str else "No data for this period"}
-
-User request/focus: {query_prompt if query_prompt else "Provide an executive summary of compliance trends."}
-
-INSTRUCTION:
-Write a highly professional, comprehensive, and detailed executive compliance trend analysis report.
+    if not query_prompt:
+        # Dashboard General Overview Mode (Short, 2-3 sentences narrative)
+        instruction = """INSTRUCTION:
+Write a highly professional, concise, narrative trend summary (2-3 sentences max). Cite statistics directly.
+Example: "Critical violations increased 23% during the last quarter, mainly driven by MFA and access control policy failures. Average compliance score stabilized at 82.5%."
+Do not include any greeting, conversational filler, or markdown headers. Output the executive summary directly.
+"""
+    else:
+        # Custom Query Detailed Mode (Long, structured markdown report)
+        instruction = f"""INSTRUCTION:
+Write a highly professional, comprehensive, and detailed executive compliance trend analysis report responding to the user request.
 Structure your report with the following section headings using Markdown:
 
 # Executive Trend Summary
@@ -324,6 +323,19 @@ Structure your report with the following section headings using Markdown:
 (Provide detailed bullet points analyzing the top recurring findings and score trends over the period, with actionable recommendations for the board.)
 
 Cite statistics and figures directly from the metrics. Do not include any greeting or conversational filler. Output the detailed markdown report directly.
+"""
+
+    context = f"""You are a Principal AI Compliance Director reporting to the board.
+    
+We have compiled the following historical compliance metrics:
+{timeframe_str}- Total Identified Violations: {total_violations}
+- Severity breakdown: Critical: {critical_count}, High: {high_count}, Medium: {medium_count}
+- Average Compliance Score Trend: {score_str if score_str else "No data for this period"}
+- Top Recurring Findings: {freq_str if freq_str else "No data for this period"}
+
+User request/focus: {query_prompt if query_prompt else "Provide an executive summary of compliance trends."}
+
+{instruction}
 """
     try:
         if total_violations == 0:
