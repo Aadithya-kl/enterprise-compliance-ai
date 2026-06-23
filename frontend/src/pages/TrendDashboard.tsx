@@ -143,7 +143,7 @@ export default function TrendDashboardPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl pb-10">
+    <div className="max-w-7xl mx-auto w-full px-4 space-y-6 pb-10">
       <div>
         <h1 className="page-heading">Compliance Trend Intelligence</h1>
         <p className="page-subheading mt-1">

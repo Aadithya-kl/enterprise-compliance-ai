@@ -96,7 +96,7 @@ export default function ComplianceReportsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <div className="max-w-7xl mx-auto w-full px-4 space-y-6 pb-12">
       <div>
         <h1 className="page-heading">Compliance Reports</h1>
         <p className="page-subheading mt-1">
@@ -104,9 +104,9 @@ export default function ComplianceReportsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         {/* Left/Main Column */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           {/* Action cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Quick Report */}
