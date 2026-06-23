@@ -35,11 +35,24 @@ def check_llm_health() -> bool:
         return False
 
 @retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=2, max=15),
-    retry=retry_if_exception_type(RuntimeError),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception),
     reraise=True
 )
+def _execute_llm_call(
+    gemini_client,
+    model: str,
+    contents: str,
+    config: types.GenerateContentConfig
+):
+    logger.info(f"Making Gemini API call (model: {model})...")
+    return gemini_client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=config
+    )
+
 def generate_response(
     prompt: str,
     system_prompt: Optional[str] = None,
@@ -65,10 +78,13 @@ def generate_response(
         if system_prompt:
             config_kwargs["system_instruction"] = system_prompt
             
-        response = gemini_client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(**config_kwargs)
+        config = types.GenerateContentConfig(**config_kwargs)
+        
+        response = _execute_llm_call(
+            gemini_client,
+            settings.GEMINI_MODEL,
+            prompt,
+            config
         )
         return response.text
     except Exception as exc:

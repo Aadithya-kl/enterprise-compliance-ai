@@ -34,6 +34,30 @@ class RouterState(TypedDict, total=False):
 
 def classify_query(query: str) -> str:
     """Classify the user's query into one of three execution categories."""
+    q_lower = query.lower().strip()
+    
+    # Fast-path heuristics: Unambiguous keywords
+    # 1. Trend Analysis heuristics
+    trend_keywords = [
+        "trend", "history", "over time", "recurring", "severity changes", 
+        "compliance score", "violation frequency", "risk distribution", 
+        "quarterly", "monthly", "rise", "fall", "climb", "drop",
+        "how did violations change", "department comparison", "most findings"
+    ]
+    if any(w in q_lower for w in trend_keywords):
+        logger.info(f"Heuristics routed query to trend_analysis based on keyword match.")
+        return "trend_analysis"
+        
+    # 2. Compliance Analysis / Audit heuristics
+    compliance_keywords = [
+        "run audit", "run compliance", "run report", "generate compliance report",
+        "gap audit", "gap analysis", "side-by-side", "compare policy", 
+        "audit our policy", "compliance comparison"
+    ]
+    if any(w in q_lower for w in compliance_keywords):
+        logger.info(f"Heuristics routed query to compliance_analysis based on keyword match.")
+        return "compliance_analysis"
+
     prompt = f"""You are a Router Agent for an Enterprise Compliance Platform.
     
 Classify the user query into exactly one of these categories:
@@ -53,12 +77,7 @@ CRITICAL: Return ONLY one of these strings: "trend_analysis", "compliance_analys
             return "compliance_analysis"
         return "rag_question"
     except Exception as exc:
-        logger.warning(f"LLM classification failed: {exc}. Using keyword heuristics.")
-        q_lower = query.lower()
-        if any(w in q_lower for w in ["trend", "history", "change", "over time", "increase", "decrease", "quarter", "month", "recurring"]):
-            return "trend_analysis"
-        if any(w in q_lower for w in ["audit", "analyze", "gap", "compare policy"]):
-            return "compliance_analysis"
+        logger.warning(f"LLM classification failed: {exc}. Defaulting to rag_question.")
         return "rag_question"
 
 # ---- Node Functions ----

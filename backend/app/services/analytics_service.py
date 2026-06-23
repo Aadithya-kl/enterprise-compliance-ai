@@ -17,6 +17,8 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+_TREND_SUMMARY_CACHE = {}
+
 def _parse_query_dates(query: str) -> Tuple[Optional[datetime], Optional[datetime]]:
     """
     Parses a query string to extract a start date and an end date based on date/timeline cues.
@@ -282,6 +284,21 @@ def generate_ai_trend_summary(db: Session, query_prompt: str = "") -> str:
         start_str = start_date.strftime("%Y-%m-%d") if start_date else "inception"
         end_str = end_date.strftime("%Y-%m-%d") if end_date else "present"
         timeframe_str = f"Timeframe: {start_str} to {end_str}\n"
+
+    # Construct deterministic cache key
+    cache_key = (
+        query_prompt.strip(),
+        total_violations,
+        critical_count,
+        high_count,
+        medium_count,
+        score_str,
+        freq_str,
+        timeframe_str
+    )
+    if cache_key in _TREND_SUMMARY_CACHE:
+        logger.info("Trend Analytics: Returning cached AI trend summary.")
+        return _TREND_SUMMARY_CACHE[cache_key]
         
     context = f"""You are a Principal AI Compliance Director reporting to the board.
     
@@ -306,6 +323,9 @@ Do not include any greeting or conversational filler. Output the executive summa
         logger.info(f"Trend Analytics Context Length: {len(context)}")
         logger.info(f"Trend Analytics Execution Metrics - Total Violations: {total_violations}, Critical: {critical_count}")
         result = _call_llm(context)
+        
+        # Save to cache on success
+        _TREND_SUMMARY_CACHE[cache_key] = result
         logger.info(f"Trend Analytics Generation Successful. Output length: {len(result)}")
         return result
     except Exception as exc:
