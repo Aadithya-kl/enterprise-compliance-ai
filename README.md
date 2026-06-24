@@ -19,6 +19,7 @@
 </div>
 
 ---
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Try_the_Platform-success?style=for-the-badge)](https://enterprise-compliance-ai-swart.vercel.app/login)
 
 ## Overview
 
