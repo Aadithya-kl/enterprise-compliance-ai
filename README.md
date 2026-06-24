@@ -306,24 +306,24 @@ Contributions are welcome. Please open an issue before submitting a pull request
 ## Author
 
 **K L Aadithya**
-B.Tech Computer Science and Data Science, Sai University
+B.Tech Computing and DataScience, Sai University, Chennai
 
 [![GitHub](https://img.shields.io/badge/GitHub-Aadithya--kl-181717?style=flat-square&logo=github)](https://github.com/Aadithya-kl)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-k--l--aadithya-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/k-l-aadithya-62b018295)
 
 ---
-**Shrinidhi**
-B.Tech Computer Science and Data Science, Sai University
+**Shrinithi**
+B.Tech Computing and DataScience, Sai University, Chennai
 
 [![GitHub](https://img.shields.io/badge/GitHub-shrinithisk-181717?style=flat-square&logo=github)](https://github.com/shrinithisk)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-k--l--aadithya-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/shrinithi-saravanakumar-04112128a/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Shrinithi-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/shrinithi-saravanakumar-04112128a/)
 
 ---
 **Sankeerthana**
-B.Tech Computer Science and Data Science, Sai University
+B.Tech Computing and DataScience, Sai University, Chennai
 
 [![GitHub](https://img.shields.io/badge/GitHub-KoletiSankeerthana-181717?style=flat-square&logo=github)](https://github.com/KoletiSankeerthana)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-k--l--aadithya-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/koleti-sankeerthana-a093612a4/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Sankeerthana-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/koleti-sankeerthana-a093612a4/)
 
 
 ---
