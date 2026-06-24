@@ -14,11 +14,12 @@
 [![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
+<br>
+
 [![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Try_the_Platform-44CC11?style=for-the-badge)](https://enterprise-compliance-ai-swart.vercel.app/login)
 
+</div>
 
-----
- 
 ## Overview
 
 Enterprise Compliance & Audit Intelligence Platform is a production-grade system that automates the analysis of organizational policies against regulatory frameworks using Retrieval-Augmented Generation (RAG) and a multi-agent AI architecture.
