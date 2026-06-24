@@ -14,12 +14,15 @@
 [![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Try_the_Platform-44CC11?style=for-the-badge)](https://enterprise-compliance-ai-swart.vercel.app/login)
+
+<br>
+
 [Report Bug](https://github.com/Aadithya-kl/enterprise-compliance-ai/issues) · [Request Feature](https://github.com/Aadithya-kl/enterprise-compliance-ai/issues)
 
 </div>
 
 ---
-[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Try_the_Platform-success?style=for-the-badge)](https://enterprise-compliance-ai-swart.vercel.app/login)
 
 ## Overview
 
