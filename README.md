@@ -16,13 +16,7 @@
 
 [![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Try_the_Platform-44CC11?style=for-the-badge)](https://enterprise-compliance-ai-swart.vercel.app/login)
 
-<br>
 
-[Report Bug](https://github.com/Aadithya-kl/enterprise-compliance-ai/issues) · [Request Feature](https://github.com/Aadithya-kl/enterprise-compliance-ai/issues)
-
-</div>
-
----
 
 ## Overview
 
